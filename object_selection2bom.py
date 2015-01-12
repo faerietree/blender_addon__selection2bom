@@ -848,8 +848,10 @@ def build_filelink(context):
         print('building filelink ...')
 
     #build filelink
-    root = './'#using relative paths -> to home directory
-    #root = os.getcwd()#<-- the directory of the current file (the question is of it's the blend file?)
+    root = bpy.path.abspath('//') 
+    #root = './'#using relative paths -> to home directory
+    #root = os.getcwd()#<-- current working directory, so where the blender was launched from.
+    print('Root: ' + root)
     #root = dirname(pathname(__FILE__))#http://stackoverflow.com/questions/5137497/find-current-directory-and-files-directory
     filename = 'BoM-'#TODO Determine this blender file name!
     fileending = '.txt'
@@ -861,7 +863,7 @@ def build_filelink(context):
         objectname = 'no-or-buggy-active-object'
     
     filename = filename + objectname
-    filelink = root + filename + fileending
+    filelink = root + '/' + filename + fileending
     
     #don't overwrite existing boms because for several selections individual boms
     # could be desired.
