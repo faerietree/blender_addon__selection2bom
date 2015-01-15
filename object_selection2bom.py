@@ -7,7 +7,7 @@ bl_info = {
     "author":       "faerietree (Jan R.I.Balzer-Wein)",
     "version":      (0, 2),
     "blender":      (2, 7, 3),
-    "location":     "View3D > Tool Shelf > Selection 2 BoM",
+    "location":     "View3D > Tool Shelf > Misc > Selection 2 BoM",
     "description":  "Either creates a Bill of Materials out of selected objects"
             " (including group instances). Or selects all objects of the current"
             " scene that are not hidden automatically while sorting out rendering-"
@@ -56,7 +56,7 @@ bl_info = {
 
 # ------- LICENSING ------------------------------------------------------------
 # (c) Copyright FarieTree Productions J. R.I.B.-Wein    i@ciry.at
-# It's free, as is, open source and property to Earth. But without warranty.
+# It's free, as is, open source and property to the World. But without warranty.
 # Thus use it, improve it, recreate it and please at least keep the
 # origin as in usual citation, i.e. include this Copyright note.
 # LICENSE: APACHE
@@ -76,18 +76,17 @@ from bpy.props import IntProperty, StringProperty, BoolProperty, EnumProperty
 
 
 #------- GLOBALS --------------------------------------------------------------#
-#show debug messages in blender console (that is the not python console!)
+# Show debug messages in blender console (that is the not python console!)
 debug = True
 
-#both independant, for the input-globals see register()!
+# Both independant, for the input-globals see register()!
 case_sensitive = True
-#write_to_file = True
 
-#difficult to guess unless animation or rendering-related
+# Difficult to guess unless animation or rendering-related:
 skip_non_mechanical_objects = True
 
-#whether to resolve groups and create BoM entries for contained objects
-#set in context view 3d panel
+# Whether to resolve groups and create BoM entries for contained objects
+# is set in context view 3d panel.
 after_how_many_create_bom_entry_recursions_to_abort = 100#kind a century :)
 
 
@@ -107,8 +106,7 @@ def main(context):
 
 
 #ACT
-#@param string:unix_pattern is optional
-#@return always returns True or False#selection_result
+#@return always returns True or False
 object_reference_count = {}
 def act(context):
 
@@ -199,13 +197,13 @@ def act(context):
     ############
     global filelink
     filelink = build_filelink(context)
-        
-
+    
+    
     ##########
     # OBJECTS (including group instances as those are attached to objects, see dupligroup 
-    #          http://wiki.blender.org/index.php/Doc:2.6/Manual/Modeling/Objects/Duplication/DupliGroup)
+    #          http://wiki.blender.org/index.php/Doc:2.7/Manual/Modeling/Objects/Duplication/DupliGroup)
     ##########
-    result = create_bom_entry_recursively(context, context.selected_objects.copy())#no deepcopy as the objects
+    result = create_bom_entry_recursively(context, context.selected_objects.copy(), None)#no deepcopy as the objects
                                                            #in the dictionary shall keep their live character!
                                                            #This was required because we have to create new
                                                            #temporary selections later on while diving deep
@@ -356,7 +354,7 @@ def is_longest_material_then_store_len(material_label='', material=None):
 
 #CREATE BOM ENTRY FROM OBJECT
 create_bom_entry_recursion_depth = 0
-def create_bom_entry_recursively(context, o_bjects):
+def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object):
     if debug:
         print('Creating BoM entry recursively ...')
         
@@ -383,12 +381,16 @@ def create_bom_entry_recursively(context, o_bjects):
     if ( (o_bjects is object) or (type(o_bjects) is object) or (type(o_bjects) is bpy.types.Object) ):
         
         is_longest_object_label_then_store_len(o_bjects)
-        print('Encountered an object: ', o_bjects, ' blender-Type: ', o_bjects.type)
+        if debug:
+            print('Encountered an object: ', o_bjects, ' blender-Type: ', o_bjects.type)
         
         
         #Is object type considered? (not considered are e.g. armatures.)
         #dupligroup/groupinstance can theoretically be attached to any object, but we only consider those:
         if (is_object_type_considered(o_bjects.type)):#(o_bjects has to be an object for type to exist)
+
+            #is_to_be_listed_into_bom = False
+            # Evaluate the object type and current mode:
 
             #Is not a group instance?        
             if (o_bjects.dupli_group is None):
@@ -398,8 +400,9 @@ def create_bom_entry_recursively(context, o_bjects):
                         print('Object ', o_bjects,' is not visible in the current scene: ', context.scene)
                     return {'CANCELLED'}
                     
-                #this object is not functioning as a group instance container!
-                if (not build_and_store_bom_entry(context, o_bjects)):
+                # This object is not functioning as a group instance container!
+                # In all modes, these objects get an entry in the BoM.
+                if (not build_and_store_bom_entry(context, o_bjects, owning_group_instance_object)):
                     if debug:
                         print('Failed to write bom entry to file. ', o_bjects, create_bom_entry_recursion_depth)
                     return {'CANCELLED'}
@@ -415,7 +418,7 @@ def create_bom_entry_recursively(context, o_bjects):
                     #THE DUPLI_TYPE IS ONLY RELEVANT FOR NEWLY CREATED DUPLICATIONS/REFERENCES FROM THE OBJECT!
                     #THE TYPE OF THE GROUP (o_bjects.dupli_group:bpy.types.Group) IS INTERESTING BUT IS 'GROUP' ANYWAY ELSE IT WERE NO GROUP!
                     #Is a group but has no objects in the group?
-                    and (len(o_bjects.dupli_group.objects) > 0)): #if no objects are linked here the creation of a BoM entry is pointless
+                    and (len(o_bjects.dupli_group.objects) > 0)): # If no objects are linked here the creation of a BoM entry is pointless.
                 if debug:
                     print("It's a Group instance! Attached dupli group: ", o_bjects.dupli_group)
                     
@@ -424,37 +427,57 @@ def create_bom_entry_recursively(context, o_bjects):
                     if debug:
                         print('Group shall not be resolved. Is considered a standalone complete part on its own.')
                     #This object is functioning as a group instance container and resembles a standalone mechanical part!
-                    if (not build_and_store_bom_entry(context, o_bjects)):
+                    #is_to_be_listed_in_bom = True
+                    if (not build_and_store_bom_entry(context, o_bjects, owning_group_instance_object)): #<-- still attach it to a possible parent group instance.
                         if debug:
                             print('Failed to write bom entry of group instance to file: ', o_bjects, '\t dupli group: ', o_bjects.dupli_group)
                         return {'CANCELLED'}
                     return {'FINISHED'}
                     
-                #make an attempt at resolving the group instance
-                #Here only group instances are handled! Groups are handled later in the act function.
-                #The objects where this instance is attached to?
+                # Hybrid mode? i.e. list in bom and resolve objects too?
+                elif (context.scene.selection2bom_in_mode == '2'):
+                    if debug:
+                        print('Hybrid Mode: Group instances/assemblies are both listed in the bom and resolved.',
+                        ' A tree is the desired result, i.e. This assembly exists x times and it is assembled',
+                        ' using the following parts.')
+                    #is_to_be_listed_in_bom = True
+                    is_group_instance_and_needs_to_be_resolved = True
+                    if (not build_and_store_bom_entry(context, o_bjects, owning_group_instance_object)):
+                        if debug:
+                            print('Failed to write bom entry of group instance to file: ', o_bjects, '\t dupli group: ', o_bjects.dupli_group)
+                # Both mode 1 and 2 need to resolve the group into its objects (if they are not atomar):
+                if (o_bjects.name.lower().find('atom:') != -1):
+                    return {'FINISHED'}
+
+                # Make an attempt at resolving the group instance into the objects the group contains:
+                #Here only group instances are handled! Groups are handled later in the act function. Though that a group exists as one object is not possible and thus they need not to be handled at all. The only chance to encounter a group is via a group instance. Comment will thus be removed in next commit.
                 resolve_group_result = o_bjects.dupli_group.objects#resolve_group(group)
                 
+                #if (context.scene.selection2bom_in_mode == '2'):
+                #    build_and_store_bom_entry(context, '------- Parts of assembly `' + o_bjects.dupli_group.name + '`: -------')
+                #    #more generic as not every group instance may be a coherent assembly: build_and_store_bom_entry(context, '------- Grouped Parts `' + o_bjects.dupli_group.name + '`: -------')
                 if (resolve_group_result is None or (len(resolve_group_result) < 1)):
                     #Group was not resolved successfully!
                     if debug:
-                        print('Failed to resolve a group or group was empty. ', group)
+                        print('Failed to resolve a group or group was empty. ', str(o_bjects.dupli_group))
                     return {'CANCELLED'}
                     
                 #Group resolved into objects!
                 if debug:
                     print('Resolved a group. Count of objects in group: ', len(resolve_group_result))
                 for obj in resolve_group_result:
-                    create_bom_entry_recursively(context, obj)
+                    create_bom_entry_recursively(context, obj, o_bjects)
                     
+                #if (context.scene.selection2bom_in_mode == '2'):
+                #    build_and_store_bom_entry(context, '------- Parts of assembly `' + o_bjects.dupli_group.name + '` -END -------')
                 return {'FINISHED'}
-                    
+                 
             else:
                 #if no objects are linked here the creation of a BoM entry is pointless
                 if debug:
                     print('It may be a group instance ', o_bjects.dupli_group, ' but has no objects: ', o_bjects.dupli_group.objects)
                 return {'CANCELLED'}
-            
+           
             
             
         #Object type is not considered then:
@@ -469,8 +492,9 @@ def create_bom_entry_recursively(context, o_bjects):
     # LIST?
     #-------
     elif (o_bjects is list or type(o_bjects) is list):
+        print('>> Object is list: ' + str(o_bjects) + ' | type:' + str(type(o_bjects)))
         for o in o_bjects:
-            create_bom_entry_recursively(context, o)
+            create_bom_entry_recursively(context, o, owning_group_instance_object)
         return {'FINISHED'}
 
 
@@ -518,22 +542,44 @@ def is_object_type_considered(object_type):
   
   
 bom_entry_count_map = {}
+assembly_bom_entry_count_map = {}
 #def init_bom_entry_count_map():
 #   pass
-def build_and_store_bom_entry(context, o):#http://docs.python.org/2/tutorial/datastructures.html#dictionaries =>iteritems()
-    bom_entry = build_bom_entry(context, o)#http://docs.python.org/3/tutorial/datastructures.html#dictionaries => items() 
+def build_and_store_bom_entry(context, o, owning_group_instance_object):#http://docs.python.org/2/tutorial/datastructures.html#dictionaries =>iteritems()
+    # Also give parent group instance/assembly to allow to inherit its delta transforms:
+    bom_entry = build_bom_entry(context, o, owning_group_instance_object)#http://docs.python.org/3/tutorial/datastructures.html#dictionaries => items() 
     if debug:
         print('Generated BoM entry: ', bom_entry)
     
-    #keep track of how many BoM entries of same type have been found
+    #keep track of how many BoM entries of same type have been found.
     if (not (bom_entry in bom_entry_count_map)):
         if debug:
             print('From now on keeping track of bom_entry count of ', bom_entry)
         bom_entry_count_map[bom_entry] = 0
-    
+        
     bom_entry_count_map[bom_entry] = bom_entry_count_map[bom_entry] + 1
     if debug:
         print('-> new part count: ', bom_entry_count_map[bom_entry], 'x ', bom_entry)
+        
+    # Have to add assembly entry?
+    if (owning_group_instance_object is not None):
+        # Important Note: The last item of the list could be spliced out! It's not done for performance. It's tested if for equality and skipped instead - in build_bom_entry().
+        assembly_bom_entry = build_bom_entry(context, owning_group_instance_object, None) #TODO store owning_group_instance_objects and iterate bottom up.
+        # Keep track of how many BoM entries of the same type belong to this unique assembly:
+        if (not (assembly_bom_entry in assembly_bom_entry_count_map)):
+            if debug:
+                print('From now on keeping track of assembly: ', assembly_bom_entry)
+            assembly_bom_entry_count_map[assembly_bom_entry] = {}
+            
+        if (not (bom_entry in assembly_bom_entry_count_map)):
+            if debug:
+                print('Assembly: From now on keeping track of bom_entry count of ', bom_entry)
+            assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = 0
+    
+        assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] + 1
+        if debug:
+            print('Assembly:', assembly_bom_entry, ' -> new part count: ', assembly_bom_entry_count_map[assembly_bom_entry][bom_entry], 'x ', bom_entry)
+        
     return bom_entry
     
     
@@ -549,7 +595,7 @@ def build_and_store_bom_entry_out_of_group(context, g):
 
     
 
-def build_bom_entry(context, o):    
+def build_bom_entry(context, o, owning_group_instance_object):
     #build BoM entry: using http://www.blender.org/documentation/blender_python_api_2_69_release/bpy.types.Object.html
     entry = getBaseName(o.name)
     
@@ -636,11 +682,20 @@ def build_bom_entry(context, o):
     # DIMENSIONS
     #######
     #TODO don't take the absolute bounding_box dimensions -instead calculate form object.bounding_box (list of 24 space coordinates)
-    #A group instance? (dupli group empties/objects where a dupli group is attached may have no dimensions or zero).
+    #As a group instance is a dupli group holding empty object, it may have dimensions or (delta) transform other than zero. So deal with it.
     #undo_count = 0 #now working with a copy of the initially selected_objects (no longer a live copy/reference)
-    x = o.dimensions[0]
+    x = o.dimensions[0] # As it's in object context, the scale is taken into account in the bounding box already.
     y = o.dimensions[1]
     z = o.dimensions[2]
+    # If provided inherit parent group instance's transforms:
+    if (owning_group_instance_object is not None): # TODO iterate here and check for o and owning_o equality and skip if equal (see performance hack, it's done to avoid removing element from the list which is live and still needed later).
+        x *= owning_group_instance_object.scale[0]
+        y *= owning_group_instance_object.scale[1]
+        z *= owning_group_instance_object.scale[2]
+        x *= owning_group_instance_object.delta_scale[0]
+        y *= owning_group_instance_object.delta_scale[1]
+        z *= owning_group_instance_object.delta_scale[2]
+        
     if (not (o.dupli_group is None)):
         if debug:
             print('Creating temporary selection.')#To be undone or unexpected results will
@@ -665,7 +720,7 @@ def build_bom_entry(context, o):
         if debug:
             print('active object after duplication of group instance: ', context.active_object, ' or :', context.scene.objects.active)
      
-        # That this condition is true is very UNLIKELY!  
+        # That this condition is true is very UNLIKELY because we just copied the group instance and checked before that dupli_group in not None!  
         if (context.scene.objects.active.dupli_group is None):
             print('The active object is no group instance after the duplication for determining dimension!? Looking for a group instance in selection now ...')
             is_group_instance_found = False
@@ -986,13 +1041,12 @@ def getBaseName(s):
 #------- CLASSES --------------------------------------------------------------#
 
 
-#/**
-# * JoinOrGroupMatchingObjects
-# *
-# * Wraps some general attributes and some specific ones
-# * like the actual content of the regex input field.
-# *                               inheritance
-# */
+#
+# JoinOrGroupMatchingObjects
+#
+# Wraps some general attributes and some specific ones
+# like the actual content of the regex input field.
+#
 class OBJECT_OT_Selection2BOM(bpy.types.Operator):
     """Performs the operation (i.e. creating a bill of materials) according to the settings."""
     #=======ATTRIBUTES=========================================================#
@@ -1031,12 +1085,11 @@ class OBJECT_OT_Selection2BOM(bpy.types.Operator):
 
 
 
-#/**
-# * GUI Panel
-# *
-# * Two or more inputs: 1x checkbox, 1x text input for the pattern.
-# * Extends Panel.
-# */
+#
+# GUI Panel
+#
+# Extends Panel.
+#
 class VIEW3D_PT_tools_selection2bom(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
@@ -1082,8 +1135,13 @@ class VIEW3D_PT_tools_selection2bom(bpy.types.Panel):
         
         row = layout.row(align = True)
         label = in_mode_str + " 2 BOM!"
-        if (s.selection2bom_in_mode != '0'):
-            label = label + ' (Groups are Parts)'
+        if (s.selection2bom_in_mode == '0'):
+            label = '(Treat assemblies as complete parts.)' + label
+        elif (s.selection2bom_in_mode == '1'):
+            label = '(Resolve group instances)' + label
+        else:#if (s.selection2bom_in_mode == '2'):
+            label = '(Both/Hybrid)' + label
+            
         row.operator('object.selection2bom', icon='FILE_TICK', text = label)
 
 
@@ -1109,8 +1167,9 @@ def register():
                 " underlaying group's contained objects or if a group"
                 " is a standalone part on its own too.",
         items = [
-            ("0", "Generate BoM - Each group instance is a complete part on its own.", ""),
-            ("1", "Generate BoM - Resolve Groups , only objects are complete parts.", "")
+            ("0", "All group instances are atomar, i.e. a complete part on its own.", ""),
+            ("1", "Group instances are resolved recursively, only objects are complete parts.", ""),
+            ("2", "Hybrid Mode: Group instances both are parts and are resolved into the objects it contains.", "")
         ],
         default='0'
     )
