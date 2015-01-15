@@ -5,8 +5,8 @@
 bl_info = {
     "name":         "Selection 2 Bill of Materials",
     "author":       "faerietree (Jan R.I.Balzer-Wein)",
-    "version":      (0, 1),
-    "blender":      (2, 6, 9),
+    "version":      (0, 2),
+    "blender":      (2, 7, 3),
     "location":     "View3D > Tool Shelf > Selection 2 BoM",
     "description":  "Either creates a Bill of Materials out of selected objects"
             " (including group instances). Or selects all objects of the current"
@@ -20,27 +20,24 @@ bl_info = {
             " \r\n\nLuckily there is an option to consider group instances as complete"
             " independant standalone parts, not resolving the objects but creating"
             " a BoM entry for each group's instances!"
+            " \r\n\nA hybrid mode is under development. In this mode the group instances "
+            " are grouped and treated as usual standalone part. Each of these assemblies"
+            " is resolved too as long as the same kind of assembly not has occurred and"
+            " been resolved before. Delta transforms make parts a distinct part."
+            " Furthermore group objects inherit the delta transforms!"
             " \r\n\nApplication: Hide objects that shall be excluded from the BoM or select"
             " objects to be included in the BoM explicitely. If no selection is given"
             " then all the not hidden objects and group instances are examined."
             "\r\n\nThe dimensions are calculated from scale times"
             " the object-data dimensions! => Model measurements need to be in real"
             " world size/units or at least have to be scaled to the desired units!",
-    "wiki_url":     "http://wiki.blender.org/index.php/Extensions:"
-                    "2.6/Py/Scripts/Object/Selection2BoM",
+    "wiki_url": "http://github.com/faerietree/selection2bom",
     "tracker_url":  "https://projects.blender.org/tracker/index.php?"
                     "func=detail&aid=",
     "category":     "Object"
     #,"warning":      ""
 }
 
-
-# ------- INFORMATION ----------------------------------------------------------
-# Addon-release Blender Version: 2.68
-#
-# Addon-Version: v.1 - 2013-11-11
-# Author: Jon R.I.B.-Wein, known as Radagast of Arda, FairieTale Productions
-#
 
 # ------- DESCRIPTION ----------------------------------------------------------
 #
@@ -58,10 +55,10 @@ bl_info = {
 #   objects like lighting, cameras and armatures (animation related objects).
 
 # ------- LICENSING ------------------------------------------------------------
-# (c) Copyright FarieTree Productions J. R.I.B.-Wein    jan@ardaron.de
+# (c) Copyright FarieTree Productions J. R.I.B.-Wein    i@ciry.at
 # It's free, as is, open source and property to Earth. But without warranty.
 # Thus use it, improve it, recreate it and please at least keep the
-# origin as in usual citation, i.e. inclucde this Copyright note.
+# origin as in usual citation, i.e. include this Copyright note.
 # LICENSE: APACHE
 #
 # ------------------------------------------------------------------------------
