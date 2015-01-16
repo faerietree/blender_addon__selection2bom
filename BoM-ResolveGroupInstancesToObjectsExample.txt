@@ -1,0 +1,8 @@
+
+1x 	 	Group     	 	Material: -           	 	[x:2.0m,y:2.0m,z:2.0m]
+1x 	 	Cube     	 	Material: Material    	 	[x:0.297m,y:0.21m,z:0.0m]
+1x 	 	Linear-1	 	Material: Dimension_Red	 	[x:0.403m,y:3.0m,z:0.0m]
+3x 	 	Linear-1  	 	Material: Dimension_Red	 	[x:0.403m,y:3.0m,z:0.0m]
+3x 	 	Sphere    	 	Material: -           	 	[x:2.0m,y:2.0m,z:2.0m]
+1x 	 	Group     	 	Material: -           	 	[x:3.967m,y:3.967m,z:3.967m]
+3x 	 	Cube      	 	Material: Material    	 	[x:0.297m,y:0.21m,z:0.0m]

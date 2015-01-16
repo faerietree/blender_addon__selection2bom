@@ -1,0 +1,10 @@
+
+1x 	 	proton_h	 	Material: Material    	 	[x:1.902m,y:2.0m,z:2.0m]
+1x 	 	proton_h	 	Material: Dimension_Red	 	[x:1.902m,y:2.0m,z:2.0m]
+1x 	 	molecule	 	Material: Dimension_Red	 	[x:1.902m,y:2.0m,z:2.0m]
+======= ASSEMBLIES: ======
+-------
+	 	molecule	 	Material: Dimension_Red	 	[x:1.902m,y:2.0m,z:2.0m]:
+1x 	 	proton_h	 	Material: Material    	 	[x:1.902m,y:2.0m,z:2.0m]
+1x 	 	proton_h	 	Material: Dimension_Red	 	[x:1.902m,y:2.0m,z:2.0m]
+1x 	 	molecule	 	Material: Dimension_Red	 	[x:1.902m,y:2.0m,z:2.0m]
