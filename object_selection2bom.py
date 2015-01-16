@@ -103,12 +103,18 @@ def main(context):
 
 
 
-
+def initaddon(context):
+    global bom_entry_count_map
+    global assembly_bom_entry_count_map
+    bom_entry_count_map = {}
+    assembly_bom_entry_count_map = {}
 
 #ACT
 #@return always returns True or False
 object_reference_count = {}
 def act(context):
+    
+    initaddon(context)
 
     if debug:
         print('engine started ... (acting according to setting)')
@@ -558,6 +564,9 @@ assembly_bom_entry_count_map = {}
 #def init_bom_entry_count_map():
 #   pass
 def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http://docs.python.org/2/tutorial/datastructures.html#dictionaries =>iteritems()
+    global bom_entry_count_map
+    global assembly_bom_entry_count_map
+    
     # Also give parent group instance/assembly to allow to inherit its delta transforms:
     bom_entry = build_bom_entry(context, o, owning_group_instance_objects)#http://docs.python.org/3/tutorial/datastructures.html#dictionaries => items() 
     if debug:
@@ -742,7 +751,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         else:
             o.select = True
             context.scene.objects.active = o
-            
+        print('inheriting transformation of active: ', context.scene.objects.active)    
         # Inherit the dimensions. 
         x = context.active_object.dimensions[0]
         y = context.active_object.dimensions[1]
@@ -751,20 +760,22 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         ##Undo now no longer required (copy instead of selected_object reference for recursion used now)
         #while --undo_count > 0:
         #    bpy.ops.ed.undo()
-        bpy.ops.object.delete(use_global=False)#The duplicate should reside in this context's scene only!
-        
+        if len(context.selected_objects) > 0:
+            bpy.ops.object.delete(use_global=False)#The duplicate should reside in this context's scene only!
+        else:
+            print('WARNING: No objects selected but it should.')
         # Ensure nothing is selected:
         if (len(context.selected_objects) > 0):
             if (not bpy.ops.object.select_all(action="DESELECT")):
                 print('There seems to be already no selection - that may be interesting, but as we work with a copy it should not matter. Of importance is that now nothing is selected anymore.')
         # Select all objects that still have to be deleted (all but the joined ones):    
         objects_to_be_deleted_length = len(objects_to_be_deleted)
-        for objects_to_be_deleted_index in range(0, objects_to_be_deleted_length - 1):
-            if objects_to_be_deleted[objects_to_be_deleted_index] in objects_to_be_joined:
-                continue
-            objects_to_be_deleted[objects_to_be_deleted_index].select = True
-        
-        bpy.ops.object.delete(use_global=False) # The duplicate should reside in this context's scene only! Thus not global.
+        if (objects_to_be_deleted_length > 0):
+            for objects_to_be_deleted_index in range(0, objects_to_be_deleted_length - 1):
+                if objects_to_be_deleted[objects_to_be_deleted_index] in objects_to_be_joined:
+                    continue
+                objects_to_be_deleted[objects_to_be_deleted_index].select = True
+            bpy.ops.object.delete(use_global=False) # The duplicate should reside in this context's scene only! Thus not global.
         
         
     # Apply inherited delta transforms:    
@@ -916,9 +927,22 @@ def write2file(context, bom_entry_count_map):#<-- argument is a dictionary (key 
         #f.read()
         #f.readhline()
         bom = ''
+        # Total part (counts), all assemblies' and their count.
         for entry, entry_count in bom_entry_count_map.items(): 
             bom = bom + '\r\n' + str(entry_count) + 'x ' + entry
             #bom = bom '\r\n'
+            
+        # Assemblies:
+        if (context.scene.selection2bom_in_mode == '2'):
+            bom = bom + '\r\n======= ASSEMBLIES: ======'
+            for assembly, entry_count_map in assembly_bom_entry_count_map.items(): 
+                bom = bom + '\r\n-------'
+                bom = bom + '\r\n' + assembly + ':'
+                for entry, entry_count in bom_entry_count_map.items(): 
+                    bom = bom + '\r\n' + str(entry_count) + 'x ' + entry
+                    #bom = bom '\r\n'
+                  
+            
             
         result = f.write(bom)
         if (result):
