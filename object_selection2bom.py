@@ -597,7 +597,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
                 print('From now on keeping track of assembly: ', assembly_bom_entry)
             assembly_bom_entry_count_map[assembly_bom_entry] = {}
             
-        if (not (bom_entry in assembly_bom_entry_count_map)):
+        if (not (bom_entry in assembly_bom_entry_count_map[assembly_bom_entry])):
             if debug:
                 print('Assembly: From now on keeping track of bom_entry count of ', bom_entry)
             assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = 0
