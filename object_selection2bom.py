@@ -132,10 +132,10 @@ def act(context):
     if (context.selected_objects is None or len(context.selected_objects) == 0):
         #if debug:
         print('No selection! Automatically guessing what to select. (hidden objects are not selected)')
-        #ensure nothing is selected
-        bpy.ops.object.select_all(action="DESELECT")
+        # Ensure nothing is selected
         if debug:
             print('deselecting all.')
+        deselect_all(context)
         #select depending on if it is a mechanical object (TODO)
         for o in context.scene.objects:
             if debug: 
@@ -619,7 +619,13 @@ def build_and_store_bom_entry_out_of_group(context, g):
     #return build_and_store_bom_entry_out_of_group(context, g)
     return '\r\nBuilding bom entry out of group not supported yet. Possibly solve it analoguously to group instance dimension resolving.'
 
-    
+
+def deselect_all(context):
+    if (not bpy.ops.object.select_all(action="DESELECT")):
+        print('There seems to be already no selection - that may be interesting, but as we work with a copy it should not matter. Of importance is that now nothing is selected anymore.')
+    if (context.scene.objects.active):  # Because join operator seems to weirdly join into the wrong target object (the logging output did show that everything was fine (i.e. joining into <o>.002 as expected ... and yet the joined object was <o>.001.
+        context.scene.objects.active = None
+
 
 def build_bom_entry(context, o, owning_group_instance_objects):
     if debug:
@@ -730,9 +736,8 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, objects_to_be_deleted)
         
         # Ensure nothing is selected:
-        if (not bpy.ops.object.select_all(action="DESELECT")):
-            print('There seems to be already no selection - that may be interesting, but as we work with a copy it should not matter. Of importance is that now nothing is selected anymore.')
-            
+        deselect_all(context)
+        
         # TODO As resolving group instances recursively is costly, it would be nice to use more of the info gained. 
         # TODO When to apply modifiers?
         
@@ -778,8 +783,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
             print('WARNING: No objects selected but it should. Might have found nothing to join ...')
         # Ensure nothing is selected:
         if (len(context.selected_objects) > 0):
-            if (not bpy.ops.object.select_all(action="DESELECT")):
-                print('There seems to be already no selection - that may be interesting, but as we work with a copy it should not matter. Of importance is that now nothing is selected anymore.')
+            deselect_all(context)
         # Select all objects that still have to be deleted (all but the joined ones):    
         objects_to_be_deleted_length = len(objects_to_be_deleted)
         if (objects_to_be_deleted_length > 0):
@@ -859,17 +863,19 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
         return {'FINISHED'}
     
     # Ensure nothing is selected:
-    if (not bpy.ops.object.select_all(action="DESELECT")):
-        print('There seems to be already no selection - that may be interesting, but as we work with a copy it should not matter. Of importance is that now nothing is selected anymore.')
+    deselect_all(context)
+    
     #undo_count = undo_count + 1
     o.select = True
     #undo_count = undo_count + 1
     
     #BELOW THIS LINE NOTHING HAS TO BE UNDONE! AS THIS DUPLICATED OBJECT
     #(GROUP INSTANCE) WILL SIMPLY BE DELETED AFTERWARDS.
-    if (not is_already_duplicate):
-        if (not bpy.ops.object.duplicate()):#non-linked duplication of selected objects
+    if (not is_already_duplicate): #<-- it may be duplicated, but make_real seems to duplicate linked!
+        if (not bpy.ops.object.duplicate(linked=False)):#non-linked duplication of selected objects
             print('Object to be resolved not yet is duplicate, but duplicate() operator failed')
+        else:
+            bpy.ops.object.make_single_user(type='SELECTED_OBJECTS', object=True, obdata=True)
     
     if (len(context.selected_objects) > 1):
         print('Only one object (the group instance or one of the objects within its group) should have been selected.\r\nSelection: ', context.selected_objects, '. Thus dimension will only reflect those of the dupli group objects of the first selected group instance object.')
@@ -883,6 +889,7 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     else:
         if debug:
             print('active object after duplication of group instance: ', context.active_object, ' or :', context.scene.objects.active)
+   
    
     # If the objects are duplicated, then they still are in the same groups as the original object. This means the dupli_group suddenly has more members, which leads to endless recursion. Thus remove the duplicates from all groups:
     if debug:
@@ -909,7 +916,9 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
         bpy.ops.object.duplicates_make_real(use_base_parent=True)#false because we don't set up
                 #the empty group instance as parent of the now copied and no longer referenced group objects!
                 #The dupli group attached to this object
-                #is copied here as real value object copies (not references). => no new duplication required.
+                #is copied here as real value object copies (not references). Though as it's apparently linked,
+                #making single user is required:
+        bpy.ops.object.make_single_user(type='SELECTED_OBJECTS', object=True, obdata=True)
         #Note:
         # The real objects (including the group instance's empty!) that now reside where the group instance was before
         # should already be selected after duplicates_make_real. (Note while make_real resolves to the very bottom,
