@@ -113,6 +113,8 @@ def initaddon(context):
 #@return always returns True or False
 object_reference_count = {}
 def act(context):
+    global bom_entry_count_map
+    global assembly_bom_entry_count_map
     
     initaddon(context)
 
@@ -220,7 +222,7 @@ def act(context):
             print('creating bom entry not successful => aborting')
         #return False#selection_result
     else:
-        write2file(context, bom_entry_count_map)
+        write2file(context, bom_entry_count_map, assembly_bom_entry_count_map)
 
 
 
@@ -359,24 +361,20 @@ def is_longest_material_then_store_len(material_label='', material=None):
 
 
 #CREATE BOM ENTRY FROM OBJECT
-create_bom_entry_recursion_depth = 0
-def create_bom_entry_recursively(context, o_bjects, owning_group_instance_objects):
+def create_bom_entry_recursively(context, o_bjects, owning_group_instance_objects, recursion_depth=0):
     if debug:
-        print('Creating BoM entry recursively ...')
+        print(str(recursion_depth) + ' Creating BoM entry recursively ...')
         
-    global create_bom_entry_recursion_depth
-    create_bom_entry_recursion_depth = create_bom_entry_recursion_depth + 1
-    
-    if (create_bom_entry_recursion_depth > after_how_many_create_bom_entry_recursions_to_abort):
+    if (recursion_depth > after_how_many_create_bom_entry_recursions_to_abort):
         if debug:
             print('Failed creating bom entries in time. Recursion limit exceeded: '
-                    , create_bom_entry_recursion_depth)
+                    , recursion_depth)
         return {'CANCELLED'}
 
 
     
     if debug:
-        print('Encountered: ', o_bjects, ' type: ', type(o_bjects))
+        print(str(recursion_depth) + ' Encountered: ', o_bjects, ' type: ', type(o_bjects))
     
     
     
@@ -388,7 +386,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
         
         is_longest_object_label_then_store_len(o_bjects)
         if debug:
-            print('Encountered an object: ', o_bjects, ' blender-Type: ', o_bjects.type)
+            print(str(recursion_depth) + ' Encountered an object: ', o_bjects, ' blender-Type: ', o_bjects.type)
         
         
         #Is object type considered? (not considered are e.g. armatures.)
@@ -410,7 +408,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                 # In all modes, these objects get an entry in the BoM.
                 if (not build_and_store_bom_entry(context, o_bjects, owning_group_instance_objects)):
                     if debug:
-                        print('Failed to write bom entry to file. ', o_bjects, create_bom_entry_recursion_depth)
+                        print('Failed to write bom entry to file. ', o_bjects, recursion_depth)
                     return {'CANCELLED'}
                     
                 return {'FINISHED'}
@@ -426,7 +424,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                     #Is a group but has no objects in the group?
                     and (len(o_bjects.dupli_group.objects) > 0)): # If no objects are linked here the creation of a BoM entry is pointless.
                 if debug:
-                    print("It's a Group instance! Attached dupli group: ", o_bjects.dupli_group)
+                    print('It\'s a Group instance! Attached dupli group: ', o_bjects.dupli_group)
                     
                 #Resolving groups is not desired?
                 if (context.scene.selection2bom_in_mode == '0'):
@@ -447,9 +445,9 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                 # Hybrid mode? i.e. list in bom and resolve objects too?
                 elif (context.scene.selection2bom_in_mode == '2'):
                     if debug:
-                        print('Hybrid Mode: Group instances/assemblies are both listed in the bom and resolved.',
-                        ' A tree is the desired result, i.e. This assembly exists x times and it is assembled',
-                        ' using the following parts.')
+                        print('Hybrid Mode: Group instances/assemblies are both listed in the bom and resolved.')#,
+                        #' A tree is the desired result, i.e. This assembly exists x times and it is assembled',
+                        #' using the following parts.')
                     #is_to_be_listed_in_bom = True
                     #is_group_instance_and_needs_to_be_resolved = True
                     if (not o_bjects.is_visible(context.scene)):
@@ -481,8 +479,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                     print('Resolved a group. Count of objects in group: ', len(resolve_group_result))
                 owning_group_instance_objects.append(o_bjects) 
                 for obj in resolve_group_result:
-                    
-                    create_bom_entry_recursively(context, obj, owning_group_instance_objects)
+                    create_bom_entry_recursively(context, obj, owning_group_instance_objects, recursion_depth=(recursion_depth + 1))
                 
                 owning_group_instance_objects.remove(o_bjects)
 
@@ -501,7 +498,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
         #Object type is not considered then:
         else:
             if (debug):
-                print('Object type ', o_bjects.type, ' is not considered (e.g. armatures are not considered a mechanical part).')
+                print(str(recursion_depth) + ' Object type ', o_bjects.type, ' is not considered (e.g. armatures are not considered a mechanical part).')
             return {'CANCELLED'}
             
         
@@ -512,7 +509,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
     elif (o_bjects is list or type(o_bjects) is list):
         print('>> Object is list: ' + str(o_bjects) + ' | type:' + str(type(o_bjects)))
         for o in o_bjects:
-            create_bom_entry_recursively(context, o, owning_group_instance_objects)
+            create_bom_entry_recursively(context, o, owning_group_instance_objects, recursion_depth=(recursion_depth + 1))
         return {'FINISHED'}
 
 
@@ -585,16 +582,18 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
     # Have to add assembly entry?
     owning_group_instance_objects_length = len(owning_group_instance_objects)
     if (owning_group_instance_objects_length > 0):
-    #for i in range(owning_group_instance_objects_length - 1, 0):
+    #for i in range(owning_group_instance_objects_length - 1, -1):
         # Important Note: The last item of the list could be spliced out! It's not done for performance. It's tested if for equality and skipped instead - in build_bom_entry().
         parent_group_instance = None
         if (owning_group_instance_objects_length > 0):
             parent_group_instance = owning_group_instance_objects[owning_group_instance_objects_length - 1]
+        if debug:
+            print('Assembly: Building bom entry ...')
         assembly_bom_entry = build_bom_entry(context, parent_group_instance, owning_group_instance_objects) #TODO store owning_group_instance_objects and iterate bottom up.
         # Keep track of how many BoM entries of the same type belong to this unique assembly:
         if (not (assembly_bom_entry in assembly_bom_entry_count_map)):
             if debug:
-                print('From now on keeping track of assembly: ', assembly_bom_entry)
+                print('Assembly: From now on keeping track of assembly: ', assembly_bom_entry)
             assembly_bom_entry_count_map[assembly_bom_entry] = {}
             
         if (not (bom_entry in assembly_bom_entry_count_map[assembly_bom_entry])):
@@ -605,7 +604,8 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
         assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] + 1
         if debug:
             print('Assembly:', assembly_bom_entry, ' -> new part count: ', assembly_bom_entry_count_map[assembly_bom_entry][bom_entry], 'x ', bom_entry)
-        
+    
+    print('----*done*,constructed bom entries.')
     return bom_entry
     
     
@@ -622,6 +622,8 @@ def build_and_store_bom_entry_out_of_group(context, g):
     
 
 def build_bom_entry(context, o, owning_group_instance_objects):
+    if debug:
+        print('build_bom_entry: o:', o, ' owning_group_instance_objects:', owning_group_instance_objects)
     #build BoM entry: using http://www.blender.org/documentation/blender_python_api_2_69_release/bpy.types.Object.html
     entry = getBaseName(o.name)
     
@@ -716,7 +718,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     # If provided inherit parent group instances' transforms:
     # If o owning_o equality and skip if equal (see performance hack, it's done to avoid removing element from the list which is live and still needed later).
         
-    if (not (o.dupli_group is None)):
+    if (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
         if debug:
             print('Creating temporary selection. o: ', o, ' dupli_group: ', o.dupli_group)#To be undone or unexpected results will
             # occur as the loop uses a live copy of selection. <-- No longer valid!
@@ -736,22 +738,27 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         
         objects_to_be_joined_length = len(objects_to_be_joined)
         if objects_to_be_joined_length > 0:
-            for objects_to_be_joined_index in range(0, objects_to_be_joined_length - 1):
+            for objects_to_be_joined_index in range(0, objects_to_be_joined_length):
                 objects_to_be_joined[objects_to_be_joined_index].select = True
         
             # Arbitrarily choose the last object as target:
             context.scene.objects.active = objects_to_be_joined[objects_to_be_joined_length - 1]
             if debug:
                 print(context.selected_objects, '\r\nactive_object: ', context.active_object)
-                
+                print('joining ...')
             # Attention: Poll may fail because a context of joining into an empty is not valid!
             if (not bpy.ops.object.join()):
                 print('Joining the temporary selection (all group instances within this group instance duplicated, made real and its dupli groups\' objects recursively treated the same too) failed. Check for unjoinable object types.')
                 #break
+            if (not context.scene.objects.active):
+                print('WARNING: Active object not set after join operation.')
+            else:
+                context.scene.objects.active.select = True
         else:
-            o.select = True
+            # TODO Use the dimension of the greatest object within its dupligroup (this includes CURVE objects). Only adopt if greater than the currenty evaluated object's dimensions.
+            o.select = True # If the above functionality isn't, then this may be simplified. This is obsolete as it's the default dimension anyway.
             context.scene.objects.active = o
-        print('inheriting transformation of active: ', context.scene.objects.active)    
+        print('Adopting total dimensions of the complete assembly (joined): ', context.scene.objects.active)    
         # Inherit the dimensions. 
         x = context.active_object.dimensions[0]
         y = context.active_object.dimensions[1]
@@ -760,10 +767,15 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         ##Undo now no longer required (copy instead of selected_object reference for recursion used now)
         #while --undo_count > 0:
         #    bpy.ops.ed.undo()
+        if (context.active_object == o):
+            o.select = False
         if len(context.selected_objects) > 0:
-            bpy.ops.object.delete(use_global=False)#The duplicate should reside in this context's scene only!
+            if debug:
+                print(context.selected_objects, '\r\nactive_object: ', context.active_object)
+                print('deleting ...')
+            bpy.ops.object.delete()
         else:
-            print('WARNING: No objects selected but it should.')
+            print('WARNING: No objects selected but it should. Might have found nothing to join ...')
         # Ensure nothing is selected:
         if (len(context.selected_objects) > 0):
             if (not bpy.ops.object.select_all(action="DESELECT")):
@@ -771,11 +783,15 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         # Select all objects that still have to be deleted (all but the joined ones):    
         objects_to_be_deleted_length = len(objects_to_be_deleted)
         if (objects_to_be_deleted_length > 0):
-            for objects_to_be_deleted_index in range(0, objects_to_be_deleted_length - 1):
+            for objects_to_be_deleted_index in range(0, objects_to_be_deleted_length):
                 if objects_to_be_deleted[objects_to_be_deleted_index] in objects_to_be_joined:
+                    print('Skipping object to be deleted because it may (rather should) have been joined: ', objects_to_be_deleted[objects_to_be_deleted_index])
                     continue
                 objects_to_be_deleted[objects_to_be_deleted_index].select = True
-            bpy.ops.object.delete(use_global=False) # The duplicate should reside in this context's scene only! Thus not global.
+            if debug:
+                print(context.selected_objects, '\r\nactive_object: ', context.active_object)
+                print('deleting ...')
+            bpy.ops.object.delete()
         
         
     # Apply inherited delta transforms:    
@@ -784,6 +800,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     while owning_group_instance_objects_index > -1:
         #print('index: ', owning_group_instance_objects_index, ' of length ', owning_group_instance_objects_length)
         owning_group_instance_object = owning_group_instance_objects[owning_group_instance_objects_index]
+        # The object o itself might reside at the last position in the list, for performance reasons it was not removed. So skip it:
         if (owning_group_instance_object != o):
             x *= owning_group_instance_object.scale[0]
             y *= owning_group_instance_object.scale[1]
@@ -835,7 +852,12 @@ def build_bom_entry(context, o, owning_group_instance_objects):
 
 
         
-def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, objects_to_be_deleted, is_already_duplicate=False):
+def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, objects_to_be_deleted, is_already_duplicate=False, recursion_depth=0):
+    print(str(recursion_depth) + 'resolve_all_joinable_objects_recursively: o: ',o, ' to_be_joined: ', objects_to_be_joined, ' objects_to_be_deleted: ', objects_to_be_deleted)
+    if (recursion_depth > after_how_many_create_bom_entry_recursions_to_abort):
+        print(str(recursion_depth) + ' Reached recursion depth limit: ', after_how_many_create_bom_entry_recursions_to_abort, ' current recursion depth: ', recursion_depth)
+        return {'FINISHED'}
+    
     # Ensure nothing is selected:
     if (not bpy.ops.object.select_all(action="DESELECT")):
         print('There seems to be already no selection - that may be interesting, but as we work with a copy it should not matter. Of importance is that now nothing is selected anymore.')
@@ -847,7 +869,7 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     #(GROUP INSTANCE) WILL SIMPLY BE DELETED AFTERWARDS.
     if (not is_already_duplicate):
         if (not bpy.ops.object.duplicate()):#non-linked duplication of selected objects
-            print('duplicate failed')
+            print('Object to be resolved not yet is duplicate, but duplicate() operator failed')
     
     if (len(context.selected_objects) > 1):
         print('Only one object (the group instance or one of the objects within its group) should have been selected.\r\nSelection: ', context.selected_objects, '. Thus dimension will only reflect those of the dupli group objects of the first selected group instance object.')
@@ -861,34 +883,57 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     else:
         if debug:
             print('active object after duplication of group instance: ', context.active_object, ' or :', context.scene.objects.active)
+   
+    # If the objects are duplicated, then they still are in the same groups as the original object. This means the dupli_group suddenly has more members, which leads to endless recursion. Thus remove the duplicates from all groups:
+    if debug:
+        print('Removing selected objects from all groups. ', context.selected_objects)
+    #for selected_duplicate in context.selected_objects:
+    #    for d_group in selected_duplicate.users_group:
+    #        bpy.ops.group.objects_remove(group=d_group)
+    bpy.ops.group.objects_remove_all()
     
+    # As this is a duplicate, it needs to be removed later on:
+    # Required because of joining only allows mesh or curve only - no mix!
+    if (context.scene.objects.active.type == 'MESH'):
+        objects_to_be_joined.append(context.scene.objects.active)
+    else:  
+        objects_to_be_deleted.append(context.scene.objects.active) # It's safer here as joining into an active object keeps up the active object of course. Thus the object should be deleted but it is not as it has been marked for join. Thus better not even mark for deletion.
+
+    # Further decomposition possible? 
     if (not (context.scene.objects.active.dupli_group is None)):
+        # Store a reference because it's not certain that an operator not changes the active object.
+        group_instance_object = context.scene.objects.active
+        if debug:
+            print('Making real ...') 
         #the active object (group instance) should be the only selected one:
         bpy.ops.object.duplicates_make_real(use_base_parent=True)#false because we don't set up
                 #the empty group instance as parent of the now copied and no longer referenced group objects!
                 #The dupli group attached to this object
                 #is copied here as real value object copies (not references). => no new duplication required.
         #Note:
-        # The real objects that now reside where the group instance was before
-        # should already be selected after duplicates_make_real.
+        # The real objects (including the group instance's empty!) that now reside where the group instance was before
+        # should already be selected after duplicates_make_real. (Note while make_real resolves to the very bottom,
+        # this (our) algorithm also works if this feature should change in the future as it's a recursive approach.)
         if (len(context.selected_objects) < 1): 
             print('Attention: No selection after duplicates_make_real operator! active object: ', context.scene.objects.active)
+        
+        bpy.ops.group.objects_remove_all() # optional (because make_real removes the objects from all groups already)
             
         #group_objects = context.scene.objects.active.dupli_group.objects#.children
         group_objects = context.selected_objects
         #selected_objects_count = 0
         for group_object in group_objects:
-            if (group_object.type == 'EMPTY' or group_object.type == 'Armature'):
-                #and is_object_type_considered(group_object_type)):
-                print ('Warning: Group object\'s type is EMPTY or ARMATURE. Skipping it as these have no dimensions anyway.')
+            # If EMPTY is a considered type, then the empty corresponding to the current object (that also reside after duplicates_make_real) must be skipped:
+            if (group_object == group_instance_object):
+                if debug:
+                    print('>> Skipping group object because it\'s the group instance object itself.')
                 continue
-            resolve_all_joinable_objects_recursively(context, group_object, objects_to_be_joined, objects_to_be_deleted, is_already_duplicate=True)
+            if (not is_object_type_considered(group_object.type)):
+                print ('Warning: Group object\'s type is not considered.')
+                objects_to_be_deleted.append(group_object)
+                continue
+            resolve_all_joinable_objects_recursively(context, group_object, objects_to_be_joined, objects_to_be_deleted, is_already_duplicate=True, recursion_depth=(recursion_depth + 1))
             #++selected_objects_count
-    else:
-        objects_to_be_deleted.append(context.scene.objects.active)
-        # Required because of joining only allows mesh or curve only - no mix!
-        if (context.scene.objects.active.type == 'MESH'):
-            objects_to_be_joined.append(context.scene.objects.active)
         
     return {'FINISHED'}
 
@@ -900,7 +945,7 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
 #
 def getWhiteSpace(count):
     whitespace = ''
-    for i in range(0, count - 1):
+    for i in range(0, count): # range() is exclusive at the upper bound.
         whitespace = whitespace + ' '
     return whitespace
 
@@ -911,7 +956,7 @@ def getWhiteSpace(count):
 #
 # All found bom entries are written to a file.
 #
-def write2file(context, bom_entry_count_map):#<-- argument is a dictionary (key value pairs)!
+def write2file(context, bom_entry_count_map, assembly_bom_entry_count_map):#<-- argument is a dictionary (key value pairs)!
     if debug:
         print('Writing bill of materials to file ...')
         
@@ -934,11 +979,11 @@ def write2file(context, bom_entry_count_map):#<-- argument is a dictionary (key 
             
         # Assemblies:
         if (context.scene.selection2bom_in_mode == '2'):
-            bom = bom + '\r\n======= ASSEMBLIES: ======'
+            bom = bom + '\r\n\r\n======= ASSEMBLIES: ======'
             for assembly, entry_count_map in assembly_bom_entry_count_map.items(): 
                 bom = bom + '\r\n-------'
                 bom = bom + '\r\n' + assembly + ':'
-                for entry, entry_count in bom_entry_count_map.items(): 
+                for entry, entry_count in entry_count_map.items(): 
                     bom = bom + '\r\n' + str(entry_count) + 'x ' + entry
                     #bom = bom '\r\n'
                   
@@ -1097,24 +1142,24 @@ def isThereActiveObjectThenGet(context):
 def getBaseName(s):
     obj_basename_parts = s.split('.')
     obj_basename_parts_L = len(obj_basename_parts)
-    if debug:
-        print('getBaseName: Last part: ', obj_basename_parts[obj_basename_parts_L - 1])
+    #if debug:
+    #    print('getBaseName: Last part: ', obj_basename_parts[obj_basename_parts_L - 1])
     if (obj_basename_parts_L > 1
     and re.match('[0-9]{3}$', obj_basename_parts[obj_basename_parts_L - 1])):
-        if debug:
-            print('getBaseName: determining base name')
-        #attention: last item is left intentionally
+    #    if debug:
+    #        print('getBaseName: determining base name')
+        # Attention: Last item is left out intentionally (don't remove the '- 1').
         cleanname = ''
         for i in range(0, obj_basename_parts_L - 1):
             cleanname += obj_basename_parts[i]
         #done this strange way to avoid unnecessary GUI updates
         #as the sel.name fields in the UI may be unnecessarily updated on change ...
-        if debug:
-            print('getBaseName: determining *done*, determined basename: ', cleanname)
+        #if debug:
+        #    print('getBaseName: determining *done*, determined basename: ', cleanname)
         return cleanname
     else:
-        if debug:
-            print('getBaseName: already tidied up *done*, basename: ', s)
+        #if debug:
+        #    print('getBaseName: already tidied up *done*, basename: ', s)
         return s
     
 
