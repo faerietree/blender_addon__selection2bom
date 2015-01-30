@@ -5,7 +5,7 @@
 bl_info = {
     "name":         "Selection 2 Bill of Materials",
     "author":       "faerietree (Jan R.I.Balzer-Wein)",
-    "version":      (0, 2),
+    "version":      (0, 7),
     "blender":      (2, 7, 3),
     "location":     "View3D > Tool Shelf > Misc > Selection 2 BoM",
     "description":  "Either creates a Bill of Materials out of selected objects"
@@ -336,9 +336,6 @@ def is_longest_object_label_then_store_len(o):
 
 
 
-
-
-
 #
 #
 #
@@ -360,6 +357,25 @@ def is_longest_material_then_store_len(material_label='', material=None):
         material_longest_label_len = letter_count
     if debug:
         print('Keeping track of longest material label\'s length. Longest length: ', material_longest_label_len)
+
+
+
+#
+#
+#
+entry_count_highest_digit_count = 0
+def is_longest_entry_count_then_store_len(entry_count):
+    global entry_count_highest_digit_count
+    count = len(str(entry_count))
+    if (count > entry_count_highest_digit_count):
+        entry_count_highest_digit_count = count
+    if debug:
+        print("Keeping track of longest entry count, i.e. highest digit count: ", entry_count_highest_digit_count)
+
+
+
+
+
 
 
 
@@ -463,7 +479,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                         if debug:
                             print('Failed to write bom entry of group instance to file: ', o_bjects, '\t dupli group: ', o_bjects.dupli_group)
                 # Both mode 1 and 2 need to resolve the group into its objects (if they are not atomar):
-                if (o_bjects.name.lower().find('atom:') != -1):
+                if (re.search('^' + 'atom' + '[-_: ]+', o_bjects.name.lower()) != None):
                     return {'FINISHED'}
 
                 # Make an attempt at resolving the group instance into the objects the group contains:
@@ -583,6 +599,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
     bom_entry_count_map[bom_entry] = bom_entry_count_map[bom_entry] + 1
     if debug:
         print('-> new part count: ', bom_entry_count_map[bom_entry], 'x ', bom_entry)
+    is_longest_entry_count_then_store_len(bom_entry_count_map[bom_entry])  # For inserting compensating whitespace later.
         
     # Have to add assembly entry?
     owning_group_instance_objects_length = len(owning_group_instance_objects)
@@ -698,6 +715,23 @@ def build_bom_entry(context, o, owning_group_instance_objects):
                             if (len(parts) > 1):
                                 material = parts[1]
                             entry = parts[0]
+    
+    # Remove indicators:
+    atomar_indicator = 'atom'
+    index = entry.find('' + atomar_indicator)
+    if (index != -1):
+        pattern = '^' + atomar_indicator + '[-_: ]+'
+        entry = re.sub(pattern, '', entry)
+        #parts = entry.split(atomar_indicator)
+        #parts_length = len(parts)
+        #if (parts_length > 1):
+        #    #entry = parts[1]
+        #    entry = ''
+        #    # Reassemble, but skip the first part as it's the atomar indicator:
+        #    for parts_index in range(1, parts_length):
+        #        entry = entry + parts[parts_index]
+        #        if parts_index < parts_length - 1:
+        #            entry = entry + atomar_indicator
                 
     #keep track of the longest material label
     is_longest_material_then_store_len(material_label=material)
@@ -801,6 +835,9 @@ def build_bom_entry(context, o, owning_group_instance_objects):
                 print(context.selected_objects, '\r\nactive_object: ', context.active_object)
                 print('deleting ...')
             bpy.ops.object.delete()
+        #TODO take modifiers array, skin
+        # and solidify into account (by e.g. applying all modifiers, examining and storing the dimensions and going
+        #back in history to pre applying the modifiers!
         
         
     # Apply inherited delta transforms:    
@@ -850,11 +887,8 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     if debug:
         print('object whitespace count: ', whitespace_count, '\t material whitespace count: ', material_whitespace_count)
     bom_entry = '\t \t' + entry + getWhiteSpace(whitespace_count) + '\t \tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t \t[x:' + dimensions[0] + ',y:' + dimensions[1] + ',z:' + dimensions[2] + ']'
-            #TODO take modifiers array, skin
-            # and solidify into account (by e.g. applying all modifiers, examining and storing the dimensions and going
-            #back in history to pre applying the modifiers!
             
-            #NOT RELEVANT: + '\t \t[object is in group: ' o.users_group ', in Scenes: ' o.users_scene ']'
+    #NOT RELEVANT: + '\t \t[object is in group: ' o.users_group ', in Scenes: ' o.users_scene ']'
             
     return bom_entry
 
@@ -998,7 +1032,9 @@ def write2file(context, bom_entry_count_map, assembly_bom_entry_count_map):#<-- 
                 bom = bom + '\r\n-------'
                 bom = bom + '\r\n' + assembly + ':'
                 for entry, entry_count in entry_count_map.items(): 
-                    bom = bom + '\r\n' + str(entry_count) + 'x ' + entry
+                    digit_count = len(str(entry_count))
+                    whitespace_count = entry_count_highest_digit_count - digit_count
+                    bom = bom + '\r\n' + str(entry_count) + 'x ' + getWhiteSpace(whitespace_count) + entry
                     #bom = bom '\r\n'
                   
             
