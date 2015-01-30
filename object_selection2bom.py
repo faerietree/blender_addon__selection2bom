@@ -123,6 +123,9 @@ def act(context):
     ############
     #preparation - selection
     ############
+    scene_layers_to_restore = list(context.scene.layers)
+    if debug:
+        print('Should be true: ', id(scene_layers_to_restore), ' != ', id(context.scene.layers))
     
     #----------#
     # At this point a selection must have been made either using
@@ -187,8 +190,10 @@ def act(context):
                 context.scene.objects.active = o    #make active
                 if debug:
                     print('Selected object: ', ob, ' \tactive object: ', context.scene.objects.active)
-
-
+                    
+    else:
+       # Ensure that all layers are visible to prevent resolved objects (from group instances) not being listed in the BoM.
+       context.scene.layers = (True, True, True, True, True,  True, True, True, True, True,  True, True, True, True, True, True,  True, True, True, True)
 
     ############
     # Now there must be a selection or we abort the mission.
@@ -224,7 +229,7 @@ def act(context):
     else:
         write2file(context, bom_entry_count_map, assembly_bom_entry_count_map)
 
-
+    context.scene.layers = scene_layers_to_restore
 
 
     return {'CANCELLED'}#TODO The groups (group instances) still show up redundantly (1x <group1>
