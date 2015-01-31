@@ -5,7 +5,7 @@
 bl_info = {
     "name":         "Selection 2 Bill of Materials",
     "author":       "faerietree (Jan R.I.Balzer-Wein)",
-    "version":      (0, 7),
+    "version":      (0, 8),
     "blender":      (2, 7, 3),
     "location":     "View3D > Tool Shelf > Misc > Selection 2 BoM",
     "description":  "Either creates a Bill of Materials out of selected objects"
@@ -886,7 +886,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     material_whitespace_count = material_longest_label_len - len(material)
     if debug:
         print('object whitespace count: ', whitespace_count, '\t material whitespace count: ', material_whitespace_count)
-    bom_entry = '\t \t' + entry + getWhiteSpace(whitespace_count) + '\t \tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t \t[x:' + dimensions[0] + ',y:' + dimensions[1] + ',z:' + dimensions[2] + ']'
+    bom_entry = '\t' + entry + getWhiteSpace(whitespace_count) + '\tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']'
             
     #NOT RELEVANT: + '\t \t[object is in group: ' o.users_group ', in Scenes: ' o.users_scene ']'
             
@@ -992,6 +992,8 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
 # White space for filling up to a certain length.
 #
 def getWhiteSpace(count):
+    if (count < 0):
+        return ''
     whitespace = ''
     for i in range(0, count): # range() is exclusive at the upper bound.
         whitespace = whitespace + ' '
@@ -1019,10 +1021,16 @@ def write2file(context, bom_entry_count_map, assembly_bom_entry_count_map):#<-- 
     with open(filelink, 'w') as f:#for closing filestream automatically
         #f.read()
         #f.readhline()
-        bom = ''
+        
+        bom = '# ' + getWhiteSpace(entry_count_highest_digit_count - 1) + '\t\t\tLabel ' + getWhiteSpace(object_longest_label_len - 5) + '\t\t\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\tDimensions'
+        bom = bom + '\r\n'
+        bom = bom + '-' + getWhiteSpace(entry_count_highest_digit_count - 1) + '\t\t\t------' + getWhiteSpace(object_longest_label_len - 5) + '\t\t\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\t----------'
+        bom = bom + '\r\n'
         # Total part (counts), all assemblies' and their count.
         for entry, entry_count in bom_entry_count_map.items(): 
-            bom = bom + '\r\n' + str(entry_count) + 'x ' + entry
+            digit_count = len(str(entry_count))
+            whitespace_count = entry_count_highest_digit_count - digit_count
+            bom = bom + '\r\n' + getWhiteSpace(whitespace_count) +  str(entry_count) + 'x ' + entry
             #bom = bom '\r\n'
             
         # Assemblies:
@@ -1034,7 +1042,7 @@ def write2file(context, bom_entry_count_map, assembly_bom_entry_count_map):#<-- 
                 for entry, entry_count in entry_count_map.items(): 
                     digit_count = len(str(entry_count))
                     whitespace_count = entry_count_highest_digit_count - digit_count
-                    bom = bom + '\r\n' + str(entry_count) + 'x ' + getWhiteSpace(whitespace_count) + entry
+                    bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + str(entry_count) + 'x ' + entry
                     #bom = bom '\r\n'
                   
             
