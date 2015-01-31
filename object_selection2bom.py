@@ -1022,9 +1022,9 @@ def write2file(context, bom_entry_count_map, assembly_bom_entry_count_map):#<-- 
         #f.read()
         #f.readhline()
         
-        bom = '# ' + getWhiteSpace(entry_count_highest_digit_count - 1) + '\t\t\tLabel ' + getWhiteSpace(object_longest_label_len - 5) + '\t\t\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\tDimensions'
+        bom = getWhiteSpace(entry_count_highest_digit_count - 1) + '#\t\t\tLabel ' + getWhiteSpace(object_longest_label_len - 5) + '\t\t\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\tDimensions'
         bom = bom + '\r\n'
-        bom = bom + '-' + getWhiteSpace(entry_count_highest_digit_count - 1) + '\t\t\t------' + getWhiteSpace(object_longest_label_len - 5) + '\t\t\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\t----------'
+        bom = bom + getWhiteSpace(entry_count_highest_digit_count - 1) + '-\t\t\t------' + getWhiteSpace(object_longest_label_len - 5) + '\t\t\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\t----------'
         bom = bom + '\r\n'
         # Total part (counts), all assemblies' and their count.
         for entry, entry_count in bom_entry_count_map.items(): 
@@ -1035,7 +1035,7 @@ def write2file(context, bom_entry_count_map, assembly_bom_entry_count_map):#<-- 
             
         # Assemblies:
         if (context.scene.selection2bom_in_mode == '2'):
-            bom = bom + '\r\n\r\n======= ASSEMBLIES: ======'
+            bom = bom + '\r\n\r\n\r\n======= ASSEMBLIES: ======'
             for assembly, entry_count_map in assembly_bom_entry_count_map.items(): 
                 bom = bom + '\r\n-------'
                 bom = bom + '\r\n' + assembly + ':'
