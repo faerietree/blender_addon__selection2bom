@@ -105,8 +105,10 @@ def main(context):
 
 def initaddon(context):
     global bom_entry_count_map
+    global assembly_count_map
     global assembly_bom_entry_count_map
     bom_entry_count_map = {}
+    assembly_count_map = {}
     assembly_bom_entry_count_map = {}
 
 #ACT
@@ -227,7 +229,7 @@ def act(context):
             print('creating bom entry not successful => aborting')
         #return False#selection_result
     else:
-        write2file(context, bom_entry_count_map, assembly_bom_entry_count_map)
+        write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_entry_count_map)
 
     context.scene.layers = scene_layers_to_restore
 
@@ -479,7 +481,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                         if debug:
                             print('Failed to write bom entry of group instance to file: ', o_bjects, '\t dupli group: ', o_bjects.dupli_group)
                 # Both mode 1 and 2 need to resolve the group into its objects (if they are not atomar):
-                if (re.search('^' + 'atom' + '[-_: ]+', o_bjects.name.lower()) != None):
+                if (is_atomar(o_bjects)):
                     return {'FINISHED'}
 
                 # Make an attempt at resolving the group instance into the objects the group contains:
@@ -528,7 +530,8 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
     # LIST?
     #-------
     elif (o_bjects is list or type(o_bjects) is list):
-        print('>> Object is list: ' + str(o_bjects) + ' | type:' + str(type(o_bjects)))
+        if debug:
+            print('>> Object is list: ' + str(o_bjects) + ' | type:' + str(type(o_bjects)))
         for o in o_bjects:
             create_bom_entry_recursively(context, o, owning_group_instance_objects, recursion_depth=(recursion_depth + 1))
         return {'FINISHED'}
@@ -555,7 +558,12 @@ def is_object_type_considered(object_type):
             #or not skip_non_mechanical_objects;#<- overwrites the above and renders all types valid
     #EMPTY for group instances (even though instances can be attached to any other than empty object too!)
 
-
+def is_atomar(o):
+    return (re.search('^' + 'atom' + '[-_: ]+', o.name.lower()) != None)
+    
+def is_optional(o):
+    return (re.search('^' + 'optional' + '[-_: ]+', o.name.lower()) != None)
+    
 
 
 #
@@ -578,11 +586,13 @@ def is_object_type_considered(object_type):
   
   
 bom_entry_count_map = {}
+assembly_count_map = {}
 assembly_bom_entry_count_map = {}
 #def init_bom_entry_count_map():
 #   pass
 def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http://docs.python.org/2/tutorial/datastructures.html#dictionaries =>iteritems()
     global bom_entry_count_map
+    global assembly_count_map
     global assembly_bom_entry_count_map
     
     # Also give parent group instance/assembly to allow to inherit its delta transforms:
@@ -591,16 +601,32 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
         print('Generated BoM entry: ', bom_entry)
     
     #keep track of how many BoM entries of same type have been found.
-    if (not (bom_entry in bom_entry_count_map)):
+    count_map = bom_entry_count_map
+    # In hybrid mode?
+    if (context.scene.selection2bom_in_mode == '2'):
+        # In hybrid mode the assemblies are listed separately.
+        # Should not occur in the global parts lists if they are not atomar.
+        if debug:
+            print('==========> dupli_group: ', o.dupli_group)
+        if (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
+            if debug:
+                print('==========> is atomar: ', is_atomar(o))
+            if (not is_atomar(o)):
+                if debug:
+                    print('Assembly found: ', o, '\r\n=> Putting into assembly_count_map.')
+                count_map = assembly_count_map
+        
+    if (not (bom_entry in count_map)):
         if debug:
             print('From now on keeping track of bom_entry count of ', bom_entry)
-        bom_entry_count_map[bom_entry] = 0
+        count_map[bom_entry] = 0
         
-    bom_entry_count_map[bom_entry] = bom_entry_count_map[bom_entry] + 1
+    count_map[bom_entry] = count_map[bom_entry] + 1
     if debug:
-        print('-> new part count: ', bom_entry_count_map[bom_entry], 'x ', bom_entry)
-    is_longest_entry_count_then_store_len(bom_entry_count_map[bom_entry])  # For inserting compensating whitespace later.
-        
+        print('-> new part count: ', count_map[bom_entry], 'x ', bom_entry)
+    # To know how much compensating whitespace to insert later:
+    is_longest_entry_count_then_store_len(count_map[bom_entry])  
+    
     # Have to add assembly entry?
     owning_group_instance_objects_length = len(owning_group_instance_objects)
     if (owning_group_instance_objects_length > 0):
@@ -644,7 +670,8 @@ def build_and_store_bom_entry_out_of_group(context, g):
 
 def deselect_all(context):
     if (not bpy.ops.object.select_all(action="DESELECT")):
-        print('There seems to be already no selection - that may be interesting, but as we work with a copy it should not matter. Of importance is that now nothing is selected anymore.')
+        if debug:
+            print('There seems to be already no selection - that may be interesting, but as we work with a copy it should not matter. Of importance is that now nothing is selected anymore.')
     if (context.scene.objects.active):  # Because join operator seems to weirdly join into the wrong target object (the logging output did show that everything was fine (i.e. joining into <o>.002 as expected ... and yet the joined object was <o>.001.
         context.scene.objects.active = None
 
@@ -661,7 +688,8 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         if debug:
             print('Object ', o, ' has no active material.')
         if (not (o.dupli_group is None)):
-            print('It\'s a dupli group attached to this object. => This is a group instance. => Resolving material from its objects.')
+            if debug:
+                print('It\'s a dupli group attached to this object. => This is a group instance. => Resolving material from its objects.')
             found_material_within_group_objects = False
             for group_object in o.dupli_group.objects:
                 if (not (group_object.active_material is None)):
@@ -896,7 +924,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
 
         
 def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, objects_to_be_deleted, is_already_duplicate=False, recursion_depth=0):
-    print(str(recursion_depth) + 'resolve_all_joinable_objects_recursively: o: ',o, ' to_be_joined: ', objects_to_be_joined, ' objects_to_be_deleted: ', objects_to_be_deleted)
+    #print(str(recursion_depth) + 'resolve_all_joinable_objects_recursively: o: ',o, ' to_be_joined: ', objects_to_be_joined, ' objects_to_be_deleted: ', objects_to_be_deleted)
     if (recursion_depth > after_how_many_create_bom_entry_recursions_to_abort):
         print(str(recursion_depth) + ' Reached recursion depth limit: ', after_how_many_create_bom_entry_recursions_to_abort, ' current recursion depth: ', recursion_depth)
         return {'FINISHED'}
@@ -1006,7 +1034,7 @@ def getWhiteSpace(count):
 #
 # All found bom entries are written to a file.
 #
-def write2file(context, bom_entry_count_map, assembly_bom_entry_count_map):#<-- argument is a dictionary (key value pairs)!
+def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_entry_count_map):#<-- argument is a dictionary (key value pairs)!
     if debug:
         print('Writing bill of materials to file ...')
         
@@ -1022,28 +1050,35 @@ def write2file(context, bom_entry_count_map, assembly_bom_entry_count_map):#<-- 
         #f.read()
         #f.readhline()
         
-        bom = getWhiteSpace(entry_count_highest_digit_count - 1) + '#\t\t\tLabel ' + getWhiteSpace(object_longest_label_len - 5) + '\t\t\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\tDimensions'
+        bom = getWhiteSpace(entry_count_highest_digit_count) + '#\tLabel ' + getWhiteSpace(object_longest_label_len - 5) + '\t\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\tDimensions'
         bom = bom + '\r\n'
-        bom = bom + getWhiteSpace(entry_count_highest_digit_count - 1) + '-\t\t\t------' + getWhiteSpace(object_longest_label_len - 5) + '\t\t\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\t----------'
+        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-\t------' + getWhiteSpace(object_longest_label_len - 5) + '\t\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t----------'
         bom = bom + '\r\n'
-        # Total part (counts), all assemblies' and their count.
+        # Total part (counts):
         for entry, entry_count in bom_entry_count_map.items(): 
             digit_count = len(str(entry_count))
             whitespace_count = entry_count_highest_digit_count - digit_count
             bom = bom + '\r\n' + getWhiteSpace(whitespace_count) +  str(entry_count) + 'x ' + entry
             #bom = bom '\r\n'
             
-        # Assemblies:
+        # Assemblies (including count):
         if (context.scene.selection2bom_in_mode == '2'):
             bom = bom + '\r\n\r\n\r\n======= ASSEMBLIES: ======'
             for assembly, entry_count_map in assembly_bom_entry_count_map.items(): 
+                bom = bom + '\r\n--------------'
+                assembly_count = assembly_count_map[assembly]
+                digit_count = len(str(assembly_count))
+                whitespace_count = entry_count_highest_digit_count - digit_count
+                bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + str(assembly_count) + 'x ' + assembly + ':'
+                
                 bom = bom + '\r\n-------'
-                bom = bom + '\r\n' + assembly + ':'
                 for entry, entry_count in entry_count_map.items(): 
                     digit_count = len(str(entry_count))
                     whitespace_count = entry_count_highest_digit_count - digit_count
                     bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + str(entry_count) + 'x ' + entry
                     #bom = bom '\r\n'
+                    
+                bom = bom + '\r\n--------------\r\n\r\n'
                   
             
             
