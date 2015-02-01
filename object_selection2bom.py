@@ -559,9 +559,11 @@ def is_object_type_considered(object_type):
             #or not skip_non_mechanical_objects;#<- overwrites the above and renders all types valid
     #EMPTY for group instances (even though instances can be attached to any other than empty object too!)
 
-def is_atomar(o):
+def is_object_atomar(o):
     return (re.search('^' + 'atom' + '[-_: ]+', o.name.lower()) != None)
     
+def is_object_optional(o):
+    return (re.search('^' + 'optional' + '[-_: ]+', o.name.lower()) != None)
     
 
 
@@ -759,6 +761,11 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         #        entry = entry + parts[parts_index]
         #        if parts_index < parts_length - 1:
         #            entry = entry + atomar_indicator
+    indicator = 'optional'
+    index = entry.find('' + indicator)
+    if (index != -1):
+        pattern = indicator + '[-_: ]+'
+        entry = re.sub(pattern, '', entry)
     
 
     #keep track of the longest material label
@@ -871,6 +878,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     # Apply inherited delta transforms:    
     owning_group_instance_objects_length = len(owning_group_instance_objects)
     owning_group_instance_objects_index = owning_group_instance_objects_length - 1
+    is_optional = False
     while owning_group_instance_objects_index > -1:
         #print('index: ', owning_group_instance_objects_index, ' of length ', owning_group_instance_objects_length)
         owning_group_instance_object = owning_group_instance_objects[owning_group_instance_objects_index]
@@ -882,6 +890,10 @@ def build_bom_entry(context, o, owning_group_instance_objects):
             x *= owning_group_instance_object.delta_scale[0]
             y *= owning_group_instance_object.delta_scale[1]
             z *= owning_group_instance_object.delta_scale[2]
+           
+        if (is_object_optional(owning_group_instance_object)):
+            is_optional = True
+          
         owning_group_instance_objects_index -= 1
 
 
@@ -909,8 +921,12 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     #            operations_undone_count = operations_undone_count + 1
     #    if debug:
     #        print('operations_undone count: ', operations_undone_count)
-    
-    bom_entry = '' + entry + '___' + material + '___[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']'
+    bom_entry = entry + '___' + material + '___[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']___'
+    if (is_optional):
+        bom_entry = bom_entry + '1'
+    #else:
+    #    bom_entry = bom_entry + '0'
+        
     #bom_entry = '\t' + entry + getWhiteSpace(whitespace_count) + '\tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']'
             
     #NOT RELEVANT: + '\t \t[object is in group: ' o.users_group ', in Scenes: ' o.users_scene ']'
@@ -1034,18 +1050,26 @@ def processEntry(entry):
     label = entry_parts[0]
     material = entry_parts[1]
     dimensions = entry_parts[2]
+    is_optional = entry_parts[3]
     
     whitespace_count = object_longest_label_len - len(label)
     material_whitespace_count = material_longest_label_len - len(material)
     if debug:
         print('object whitespace count: ', whitespace_count, '\t material whitespace count: ', material_whitespace_count)
     
-    return '\t' + label + getWhiteSpace(whitespace_count) + '\tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t' + dimensions 
+    pre = ''
+    post = ''
+    if (is_optional):
+        pre = ''#PREPEND_IF_OPTIONAL
+        post = APPEND_IF_OPTIONAL
+    return '\t' + pre + label + getWhiteSpace(whitespace_count) + '\tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t' + dimensions + post
 
 
 #
 # All found bom entries are written to a file.
 #
+PREPEND_IF_OPTIONAL = '('
+APPEND_IF_OPTIONAL = ')'
 def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_entry_count_map):#<-- argument is a dictionary (key value pairs)!
     if debug:
         print('Writing bill of materials to file ...')
@@ -1068,9 +1092,12 @@ def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_en
         bom = bom + '\r\n'
         # Total part (counts):
         for entry, entry_count in bom_entry_count_map.items(): 
-            digit_count = len(str(entry_count))
-            whitespace_count = entry_count_highest_digit_count - digit_count
-            bom = bom + '\r\n' + getWhiteSpace(whitespace_count * .9) +  str(entry_count) + 'x ' + processEntry(entry)
+            pre = ''
+            if (entry.split('___')[3] != ''):
+                pre = PREPEND_IF_OPTIONAL
+            digit_count = len(str(entry_count) + pre)
+            whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
+            bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count * .9) +  str(entry_count) + 'x ' + processEntry(entry)
             #bom = bom '\r\n'
             
         # Assemblies (including count):
@@ -1086,17 +1113,23 @@ def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_en
                     continue 
                 # it's a decomposable assembly, i.e. a non-empty and non-atomar one:   
                 bom = bom + '\r\n--------------'
+                pre = ''
+                if (assembly.split('___')[3] != ''):
+                    pre = PREPEND_IF_OPTIONAL
                 assembly_count = assembly_count_map[assembly]
-                digit_count = len(str(assembly_count))
-                whitespace_count = entry_count_highest_digit_count - digit_count
-                bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + str(assembly_count) + 'x ' + processEntry(assembly) + ':'
+                digit_count = len(str(assembly_count) + pre)
+                whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
+                bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) + str(assembly_count) + 'x ' + processEntry(assembly) + ':'
                 
                 bom = bom + '\r\n-------'
                 for entry, entry_count in entry_count_map.items(): 
+                    pre = ''
+                    if (entry.split('___')[3] != ''):
+                        pre = PREPEND_IF_OPTIONAL 
                     count_string = str(int(round(entry_count/assembly_count, 0)))# + '(' + str(entry_count) + ')')
-                    digit_count = len(count_string)
-                    whitespace_count = entry_count_highest_digit_count - digit_count
-                    bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + count_string + 'x ' + processEntry(entry)
+                    digit_count = len(count_string + pre)
+                    whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
+                    bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) + count_string + 'x ' + processEntry(entry)
                     #bom = bom '\r\n'
                     
                 bom = bom + '\r\n--------------\r\n\r\n'

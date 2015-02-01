@@ -1,0 +1,45 @@
+ #	Label                   		Material 			Dimensions
+ -	-----                   		---------			----------
+
+(1x 	Beam_cylindrical_bearing	Material: gold  	[0.1m x 0.1m x 0.1m])
+ 1x 	Beam_cylindrical_bearing	Material: gold  	[0.1m x 0.1m x 0.1m]
+(5x 	Beam_Rectangle          	Material: silver	[0.1m x 1.7m x 0.1m])
+ 5x 	Beam_Rectangle          	Material: silver	[0.1m x 1.7m x 0.1m]
+
+
+======= ASSEMBLIES: ======
+--------------
+ 1x 	Bearing                 	Material: gold  	[0.1m x 0.1m x 0.1m]:
+-------
+ 1x 	Beam_cylindrical_bearing	Material: gold  	[0.1m x 0.1m x 0.1m]
+--------------
+
+
+--------------
+ 5x 	Beam                    	Material: silver	[0.1m x 1.7m x 0.1m]:
+-------
+ 1x 	Beam_Rectangle          	Material: silver	[0.1m x 1.7m x 0.1m]
+--------------
+
+
+--------------
+ 2x 	Holder                  	Material: -     	[3.5m x 1.4m x 1.7m]:
+-------
+ 0x 	Bearing                 	Material: gold  	[0.1m x 0.1m x 0.1m]
+ 2x 	Beam                    	Material: silver	[0.1m x 1.7m x 0.1m]
+--------------
+
+
+--------------
+(1x 	Bearing                 	Material: gold  	[0.1m x 0.1m x 0.1m]):
+-------
+(1x 	Beam_cylindrical_bearing	Material: gold  	[0.1m x 0.1m x 0.1m])
+--------------
+
+
+--------------
+(5x 	Beam                    	Material: silver	[0.1m x 1.7m x 0.1m]):
+-------
+(1x 	Beam_Rectangle          	Material: silver	[0.1m x 1.7m x 0.1m])
+--------------
+
