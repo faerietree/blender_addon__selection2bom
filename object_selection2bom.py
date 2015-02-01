@@ -482,7 +482,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                         if debug:
                             print('Failed to write bom entry of group instance to file: ', o_bjects, '\t dupli group: ', o_bjects.dupli_group)
                 # Both mode 1 and 2 need to resolve the group into its objects (if they are not atomar):
-                if (is_atomar(o_bjects)):
+                if (is_object_atomar(o_bjects)):
                     return {'FINISHED'}
 
                 # Make an attempt at resolving the group instance into the objects the group contains:
@@ -611,8 +611,8 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
             print('==========> dupli_group: ', o.dupli_group)
         if (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
             if debug:
-                print('==========> is atomar: ', is_atomar(o))
-            if (not is_atomar(o)):
+                print('==========> is atomar: ', is_object_atomar(o))
+            if (not is_object_atomar(o)):
                 if debug:
                     print('Assembly found: ', o, '\r\n=> Putting into assembly_count_map.')
                 count_map = assembly_count_map
@@ -1086,9 +1086,9 @@ def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_en
         #f.read()
         #f.readhline()
         
-        bom = getWhiteSpace(entry_count_highest_digit_count) + '#\tLabel' + getWhiteSpace(object_longest_label_len - 5) + '\t\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\tDimensions'
+        bom = getWhiteSpace(entry_count_highest_digit_count) + '#\tLabel' + getWhiteSpace(object_longest_label_len - 5) + '\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\tDimensions'
         bom = bom + '\r\n'
-        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-\t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\t----------'
+        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-\t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\t----------'
         bom = bom + '\r\n'
         # Total part (counts):
         for entry, entry_count in bom_entry_count_map.items(): 
