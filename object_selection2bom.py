@@ -116,6 +116,7 @@ def initaddon(context):
 object_reference_count = {}
 def act(context):
     global bom_entry_count_map
+    global assembly_count_map
     global assembly_bom_entry_count_map
     
     initaddon(context)
@@ -561,8 +562,6 @@ def is_object_type_considered(object_type):
 def is_atomar(o):
     return (re.search('^' + 'atom' + '[-_: ]+', o.name.lower()) != None)
     
-def is_optional(o):
-    return (re.search('^' + 'optional' + '[-_: ]+', o.name.lower()) != None)
     
 
 
@@ -760,7 +759,8 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         #        entry = entry + parts[parts_index]
         #        if parts_index < parts_length - 1:
         #            entry = entry + atomar_indicator
-                
+    
+
     #keep track of the longest material label
     is_longest_material_then_store_len(material_label=material)
     
@@ -910,11 +910,8 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     #    if debug:
     #        print('operations_undone count: ', operations_undone_count)
     
-    whitespace_count = object_longest_label_len - len(entry)
-    material_whitespace_count = material_longest_label_len - len(material)
-    if debug:
-        print('object whitespace count: ', whitespace_count, '\t material whitespace count: ', material_whitespace_count)
-    bom_entry = '\t' + entry + getWhiteSpace(whitespace_count) + '\tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']'
+    bom_entry = '' + entry + '___' + material + '___[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']'
+    #bom_entry = '\t' + entry + getWhiteSpace(whitespace_count) + '\tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']'
             
     #NOT RELEVANT: + '\t \t[object is in group: ' o.users_group ', in Scenes: ' o.users_scene ']'
             
@@ -1022,13 +1019,28 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
 def getWhiteSpace(count):
     if (count < 0):
         return ''
+    count = int(round(count, 0))
     whitespace = ''
     for i in range(0, count): # range() is exclusive at the upper bound.
         whitespace = whitespace + ' '
     return whitespace
 
-
-
+#
+#
+#
+def processEntry(entry):
+        
+    entry_parts = entry.split('___')
+    label = entry_parts[0]
+    material = entry_parts[1]
+    dimensions = entry_parts[2]
+    
+    whitespace_count = object_longest_label_len - len(label)
+    material_whitespace_count = material_longest_label_len - len(material)
+    if debug:
+        print('object whitespace count: ', whitespace_count, '\t material whitespace count: ', material_whitespace_count)
+    
+    return '\t' + label + getWhiteSpace(whitespace_count) + '\tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t' + dimensions 
 
 
 #
@@ -1050,32 +1062,41 @@ def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_en
         #f.read()
         #f.readhline()
         
-        bom = getWhiteSpace(entry_count_highest_digit_count) + '#\tLabel ' + getWhiteSpace(object_longest_label_len - 5) + '\t\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\tDimensions'
+        bom = getWhiteSpace(entry_count_highest_digit_count) + '#\tLabel' + getWhiteSpace(object_longest_label_len - 5) + '\t\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\tDimensions'
         bom = bom + '\r\n'
-        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-\t------' + getWhiteSpace(object_longest_label_len - 5) + '\t\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t----------'
+        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-\t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\t----------'
         bom = bom + '\r\n'
         # Total part (counts):
         for entry, entry_count in bom_entry_count_map.items(): 
             digit_count = len(str(entry_count))
             whitespace_count = entry_count_highest_digit_count - digit_count
-            bom = bom + '\r\n' + getWhiteSpace(whitespace_count) +  str(entry_count) + 'x ' + entry
+            bom = bom + '\r\n' + getWhiteSpace(whitespace_count * .9) +  str(entry_count) + 'x ' + processEntry(entry)
             #bom = bom '\r\n'
             
         # Assemblies (including count):
         if (context.scene.selection2bom_in_mode == '2'):
             bom = bom + '\r\n\r\n\r\n======= ASSEMBLIES: ======'
             for assembly, entry_count_map in assembly_bom_entry_count_map.items(): 
+                # Skip atomar assemblies (as they are listed in the global list and not to be decomposed):
+                if (not (assembly in assembly_count_map)):
+                    if (not (assembly in bom_entry_count_map)):
+                        print('Assembly neither found in assembly count map nor in global bom entry count map.')
+                    if debug:
+                        print('Skipping atomar assembly: ', assembly)
+                    continue 
+                # it's a decomposable assembly, i.e. a non-empty and non-atomar one:   
                 bom = bom + '\r\n--------------'
                 assembly_count = assembly_count_map[assembly]
                 digit_count = len(str(assembly_count))
                 whitespace_count = entry_count_highest_digit_count - digit_count
-                bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + str(assembly_count) + 'x ' + assembly + ':'
+                bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + str(assembly_count) + 'x ' + processEntry(assembly) + ':'
                 
                 bom = bom + '\r\n-------'
                 for entry, entry_count in entry_count_map.items(): 
-                    digit_count = len(str(entry_count))
+                    count_string = str(int(round(entry_count/assembly_count, 0)))# + '(' + str(entry_count) + ')')
+                    digit_count = len(count_string)
                     whitespace_count = entry_count_highest_digit_count - digit_count
-                    bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + str(entry_count) + 'x ' + entry
+                    bom = bom + '\r\n' + getWhiteSpace(whitespace_count) + count_string + 'x ' + processEntry(entry)
                     #bom = bom '\r\n'
                     
                 bom = bom + '\r\n--------------\r\n\r\n'
