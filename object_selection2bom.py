@@ -5,7 +5,7 @@
 bl_info = {
     "name":         "Selection 2 Bill of Materials",
     "author":       "faerietree (Jan R.I.Balzer-Wein)",
-    "version":      (0, 8),
+    "version":      (0, 9),
     "blender":      (2, 7, 3),
     "location":     "View3D > Tool Shelf > Misc > Selection 2 BoM",
     "description":  "Either creates a Bill of Materials out of selected objects"
@@ -1177,9 +1177,12 @@ def build_filelink(context):
         print('building filelink ...')
 
     #build filelink
-    root = bpy.path.abspath('//') 
-    #root = './'#using relative paths -> to home directory
-    #root = os.getcwd()#<-- current working directory, so where the blender was launched from.
+    root = bpy.path.abspath('//')
+    if (root ==''):
+        if debug:
+            print('.blend File not saved yet. Storing BOM to HOME or current directory.')
+        root = './'#using relative paths -> to home directory
+        #root = os.getcwd()#<-- current working directory, so where the blender was launched from.
     print('Root: ' + root)
     #root = dirname(pathname(__FILE__))#http://stackoverflow.com/questions/5137497/find-current-directory-and-files-directory
     filename = 'BoM-'#TODO Determine this blender file name!
