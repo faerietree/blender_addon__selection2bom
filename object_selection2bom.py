@@ -1,11 +1,28 @@
 #-------------------------------------------------------------------------------
 #!/usr/bin/env python
 # ========= BLENDER ADD-ON =====================================================
+# ##### BEGIN GPL LICENSE BLOCK #####
+#
+#  This program is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either version 2
+#  of the License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software Foundation,
+#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#
+# ##### END GPL LICENSE BLOCK #####
 
 bl_info = {
     "name":         "Selection 2 Bill of Materials",
-    "author":       "faerietree (Jan R.I.Balzer-Wein)",
-    "version":      (0, 9),
+    "author":       "faerietree (Jan R.I.B.-Wein), macouno",
+    "version":      (1, 0),
     "blender":      (2, 7, 3),
     "location":     "View3D > Tool Shelf > Misc > Selection 2 BoM",
     "description":  "Either creates a Bill of Materials out of selected objects"
@@ -69,6 +86,7 @@ bl_info = {
 import bpy
 import re
 import os
+import math
 
 from bpy.props import IntProperty, StringProperty, BoolProperty, EnumProperty
 
@@ -897,15 +915,11 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         owning_group_instance_objects_index -= 1
 
 
-    #measure
-    unit = 'm'
-    if (context.scene.unit_settings.system == 'IMPERIAL'):
-        unit = 'ft'
     #determine units using the unit scale of the scene's unit/world settings
     dimensions = [
-        str(round(x * context.scene.unit_settings.scale_length, context.scene.selection2bom_in_precision)) + unit,
-        str(round(y * context.scene.unit_settings.scale_length, context.scene.selection2bom_in_precision)) + unit,
-        str(round(z * context.scene.unit_settings.scale_length, context.scene.selection2bom_in_precision)) + unit
+            getMeasureString(x, context.scene.unit_settings, context.scene.selection2bom_in_precision),
+            getMeasureString(y, context.scene.unit_settings, context.scene.selection2bom_in_precision),
+            getMeasureString(z, context.scene.unit_settings, context.scene.selection2bom_in_precision),
     ]
     
     
@@ -1499,3 +1513,62 @@ if __name__ == "__main__":
     register()
     # test call
     #bpy.ops.object.join_or_group_by_pattern()
+
+
+# ########################################################
+# Written by macouno for the amazing caliper measurement addon:
+# ########################################################
+
+
+# Add the distance to a string!
+def addDistance(distance, length, unit):
+	if distance:
+		return distance+' '+str(int(length))+unit
+	return str(int(length))+unit
+
+
+	
+# FUNCTION FOR MAKING A NEAT METRIC SYSTEM MEASUREMENT STRING
+def getMeasureString(distance, unit_settings, precision):
+	
+	system = unit_settings.system
+	# Whether or not so separate the measurement into multiple units
+	separate = unit_settings.use_separate
+	# The current measurement (multiplied by scale to get meters as a starting point)
+	m = distance * unit_settings.scale_length
+	fM = 0
+	distance = False
+	
+	# From chosen to standard international (SI) conversion factors:
+	if system == 'METRIC':
+		table = [['km', 0.001], ['m', 1000], ['cm', 100], ['mm', 10]]
+	elif system == 'IMPERIAL':
+		table = [['mi', 0.000621371], ['ft', 5280], ['in', 12], ['thou', 1000]]
+	
+	# Figure out where to end measuring
+	last = len(table)
+	if precision < last:
+		last = precision
+	
+	for i, t in enumerate(table):
+		step = i
+		unit = t[0]
+		factor = t[1]
+		m = (m - fM) * factor
+		fM = math.floor(m)
+		
+		if fM and not separate:
+			return str(round(m, precision)) + unit
+		elif fM:
+			# Make sure the very last measurement is rounded and not floored
+			if step > last - 1:
+				return addDistance(distance, round(m), unit)
+			distance = addDistance(distance, fM, unit)
+
+	if not distance:
+		return '-' + unit
+
+	return distance
+	
+	
+	
