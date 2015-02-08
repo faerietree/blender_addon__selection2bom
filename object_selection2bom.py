@@ -767,7 +767,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     atomar_indicator = 'atom'
     index = entry.find('' + atomar_indicator)
     if (index != -1):
-        pattern = '^' + atomar_indicator + '[-_: ]+'
+        pattern = '' + atomar_indicator + '[-_: ]+'
         entry = re.sub(pattern, '', entry)
         #parts = entry.split(atomar_indicator)
         #parts_length = len(parts)
