@@ -1593,53 +1593,56 @@ if __name__ == "__main__":
 
 # Add the distance to a string!
 def addDistance(distance, length, unit):
-	if distance:
-		return distance+' '+str(int(length))+unit
-	return str(int(length))+unit
+    if distance:
+        return distance+' '+str(int(length))+unit
+    return str(int(length))+unit
 
 
 	
 # FUNCTION FOR MAKING A NEAT METRIC SYSTEM MEASUREMENT STRING
 def getMeasureString(distance, unit_settings, precision):
-	
-	system = unit_settings.system
-	# Whether or not so separate the measurement into multiple units
-	separate = unit_settings.use_separate
-	# The current measurement (multiplied by scale to get meters as a starting point)
-	m = distance * unit_settings.scale_length
-	fM = 0
-	distance = False
-	
-	# From chosen to standard international (SI) conversion factors:
-	if system == 'METRIC':
-		table = [['km', 0.001], ['m', 1000], ['cm', 100], ['mm', 10]]
-	elif system == 'IMPERIAL':
-		table = [['mi', 0.000621371], ['ft', 5280], ['in', 12], ['thou', 1000]]
-	
-	# Figure out where to end measuring
-	last = len(table)
-	if precision < last:
-		last = precision
-	
-	for i, t in enumerate(table):
-		step = i
-		unit = t[0]
-		factor = t[1]
-		m = (m - fM) * factor
-		fM = math.floor(m)
-		
-		if fM and not separate:
-			return str(round(m, precision)) + unit
-		elif fM:
-			# Make sure the very last measurement is rounded and not floored
-			if step > last - 1:
-				return addDistance(distance, round(m), unit)
-			distance = addDistance(distance, fM, unit)
 
-	if not distance:
-		return '-' + unit
-
-	return distance
+    system = unit_settings.system
+    # Whether or not so separate the measurement into multiple units
+    separate = unit_settings.use_separate
+    # The current measurement (multiplied by scale to get meters as a starting point)
+    m = distance * unit_settings.scale_length
+    fM = 0
+    distance = False
+    
+    # From chosen to standard international (SI) conversion factors:
+    if system == 'METRIC':
+        table = [['km', 0.001], ['m', 1000], ['cm', 100], ['mm', 10]]
+    elif system == 'IMPERIAL':
+        table = [['mi', 0.000621371], ['ft', 5280], ['in', 12], ['thou', 1000]]
+    
+    # Figure out where to end measuring
+    last = len(table)
+    if precision < last:
+        last = precision
+    
+    for i, t in enumerate(table):
+        step = i
+        unit = t[0]
+        factor = t[1]
+        m = (m - fM) * factor
+        fM = math.floor(m)
+        
+        if fM and not separate:
+            rounded = round(m, precision) 
+            if precision < 1:
+                rounded = int(rounded)
+            return str(rounded) + unit
+        elif fM:
+	    # Make sure the very last measurement is rounded and not floored
+            if step > last - 1:
+                return addDistance(distance, round(m), unit)
+            distance = addDistance(distance, fM, unit)
+    
+    if not distance:
+        return '-' + unit
+    
+    return distance
 	
 	
 	
