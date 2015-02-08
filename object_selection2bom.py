@@ -123,17 +123,32 @@ def main(context):
 
 def initaddon(context):
     global bom_entry_count_map
+    global bom_entry_info_map
     global assembly_count_map
     global assembly_bom_entry_count_map
     bom_entry_count_map = {}
+    bom_entry_info_map = {}  # url, part id, ...
     assembly_count_map = {}
     assembly_bom_entry_count_map = {}
+    
+    global entry_count_highest_digit_count
+    entry_count_highest_digit_count = 0
+    global object_longest_label_len
+    object_longest_label_len = 0
+    global material_longest_label_len
+    material_longest_label_len = 0
 
-#ACT
-#@return always returns True or False
+    global cache_resolved_dupli_group_dimensions_map
+    cache_resolved_dupli_group_dimensions_map = {}
+
+
+#
+# ACT
+# @return always returns True or False
 object_reference_count = {}
 def act(context):
     global bom_entry_count_map
+    global bom_entry_info_map
     global assembly_count_map
     global assembly_bom_entry_count_map
     
@@ -248,7 +263,7 @@ def act(context):
             print('creating bom entry not successful => aborting')
         #return False#selection_result
     else:
-        write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_entry_count_map)
+        write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_map, assembly_bom_entry_count_map)
 
     context.scene.layers = scene_layers_to_restore
 
@@ -605,12 +620,14 @@ def is_object_optional(o):
   
   
 bom_entry_count_map = {}
+bom_entry_info_map = {}  # url, part id, ...
 assembly_count_map = {}
 assembly_bom_entry_count_map = {}
 #def init_bom_entry_count_map():
 #   pass
 def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http://docs.python.org/2/tutorial/datastructures.html#dictionaries =>iteritems()
     global bom_entry_count_map
+    global bom_entry_info_map
     global assembly_count_map
     global assembly_bom_entry_count_map
     
@@ -619,7 +636,21 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
     if debug:
         print('Generated BoM entry: ', bom_entry)
     
-    #keep track of how many BoM entries of same type have been found.
+    # Store info like URL, part number, ...
+    if o.data:
+        bom_entry_info = o.data.name  # Object data (e.g. mesh) makes sense as base parts, as modifiers operate on objects. i.e. if the mesh is equal, then the part to be ordered also probably is equal. e.g. Many things can be manufactured out of a metal block.
+        # Though if the size is different this requires to duplicate and change the data (scale the mesh). A workaround for this is to multiply by the object scale but that's not helping if the link is pointing to a too small/big part as the URI generally can't be corrected automatically.
+        # Upside is that the amount of data to maintain is less. Though as objects can be interlinked too, that may be true for objects too. Though often rotation and location is wanted separate which would lead to lots of redundant URLs, ... to adapt.
+        # Despite that issue, this approach is taken. The persuading argument is that often the link points to a page where the part can be bought from. These pages often let select a size, which obsoletes the issue as the link to several part sizes is the same. For part numbers this is not true. Though part numbers are discouraged as they are an artificial map between parts, introducing a new layer of things to lookup which is not helpful. A part is already completely identified by the function it fulfills and its dimension.
+        if not bom_entry in bom_entry_info_map:
+            bom_entry_info_map[bom_entry] = bom_entry_info
+        else:
+            if bom_entry_info_map[bom_entry] != bom_entry_info:
+                if debug:
+                   print('build_and_store_bom_entry(): Info already determined but the new information is different: current: ', bom_entry_info_map[bom_entry], ' vs. new: ', bom_entry_info)
+            
+
+    # Keep track of how many BoM entries of same type have been found.
     count_map = bom_entry_count_map
     # In hybrid mode?
     if (context.scene.selection2bom_in_mode == '2'):
@@ -695,6 +726,12 @@ def deselect_all(context):
         context.scene.objects.active = None
 
 
+
+#
+# Constructing an entry for the bill of materials,
+# i.e. figuring properties.
+#
+cache_resolved_dupli_group_dimensions_map = {}
 def build_bom_entry(context, o, owning_group_instance_objects):
     if debug:
         print('build_bom_entry: o:', o, ' owning_group_instance_objects:', owning_group_instance_objects)
@@ -816,7 +853,15 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     # If provided inherit parent group instances' transforms:
     # If o owning_o equality and skip if equal (see performance hack, it's done to avoid removing element from the list which is live and still needed later).
         
-    if (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
+    if o.dupli_group and o.dupli_group in cache_resolved_dupli_group_dimensions_map:
+        if debug:
+            print('Skipping time costly resolving due to dupli group dimensions cache ... (for an environmental friendly planet)')
+        x = cache_resolved_dupli_group_dimensions_map[o.dupli_group][0]
+        y = cache_resolved_dupli_group_dimensions_map[o.dupli_group][1]
+        z = cache_resolved_dupli_group_dimensions_map[o.dupli_group][2]
+        
+    elif (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
+
         if debug:
             print('Creating temporary selection. o: ', o, ' dupli_group: ', o.dupli_group)#To be undone or unexpected results will
             # occur as the loop uses a live copy of selection. <-- No longer valid!
@@ -860,6 +905,8 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         x = context.active_object.dimensions[0]
         y = context.active_object.dimensions[1]
         z = context.active_object.dimensions[2]
+        global cache_resolved_dupli_group_dimensions_map
+        cache_resolved_dupli_group_dimensions_map[o.dupli_group] = context.active_object.dimensions.copy()  # <-- Can't store the reference as this object is just temporary. Might require recheck of validity, though such invalidation while executing the selection2bom script is impossible in blender as of now (check revision time) because the objects can't be manipulated while the operator (addon) is executing.
         
         ##Undo now no longer required (copy instead of selected_object reference for recursion used now)
         #while --undo_count > 0:
@@ -1047,19 +1094,21 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
 # White space for filling up to a certain length.
 #
 def getWhiteSpace(count):
-    if (count < 0):
+    return getCharInstances(' ', count)
+
+def getCharInstances(char, count):
+    if (count < 1):
         return ''
     count = int(round(count, 0))
-    whitespace = ''
+    chars = ''
     for i in range(0, count): # range() is exclusive at the upper bound.
-        whitespace = whitespace + ' '
-    return whitespace
+        chars = chars + char
+    return chars
 
 #
 #
 #
 def processEntry(entry):
-        
     entry_parts = entry.split('___')
     label = entry_parts[0]
     material = entry_parts[1]
@@ -1076,7 +1125,11 @@ def processEntry(entry):
     if (is_optional):
         pre = ''#PREPEND_IF_OPTIONAL
         post = APPEND_IF_OPTIONAL
-    return '\t' + pre + label + getWhiteSpace(whitespace_count) + '\tMaterial: ' + material + getWhiteSpace(material_whitespace_count) + '\t' + dimensions + post
+    entryProcessed = '\t' + pre + label + getWhiteSpace(whitespace_count) + '\t' + material + getWhiteSpace(material_whitespace_count) + '\t' + dimensions + post;
+    #entryProcessed_len = len(entryProcessed)
+    
+    return entryProcessed
+
 
 
 #
@@ -1084,7 +1137,7 @@ def processEntry(entry):
 #
 PREPEND_IF_OPTIONAL = '('
 APPEND_IF_OPTIONAL = ')'
-def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_entry_count_map):#<-- argument is a dictionary (key value pairs)!
+def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_map, assembly_bom_entry_count_map):#<-- argument is a dictionary (key value pairs)!
     if debug:
         print('Writing bill of materials to file ...')
         
@@ -1100,9 +1153,9 @@ def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_en
         #f.read()
         #f.readhline()
         
-        bom = getWhiteSpace(entry_count_highest_digit_count) + '#\tLabel' + getWhiteSpace(object_longest_label_len - 5) + '\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\tDimensions'
+        bom = getWhiteSpace(entry_count_highest_digit_count) + '# \tLabel' + getWhiteSpace(object_longest_label_len - 5) + '\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\tDimensions'
         bom = bom + '\r\n'
-        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-\t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t\t\t----------'
+        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '- \t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t----------'
         bom = bom + '\r\n'
         # Total part (counts):
         for entry, entry_count in bom_entry_count_map.items(): 
@@ -1111,8 +1164,18 @@ def write2file(context, bom_entry_count_map, assembly_count_map, assembly_bom_en
                 pre = PREPEND_IF_OPTIONAL
             digit_count = len(str(entry_count) + pre)
             whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
-            bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count * .9) +  str(entry_count) + 'x ' + processEntry(entry)
-            #bom = bom '\r\n'
+            bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) +  str(entry_count) + 'x ' + processEntry(entry)
+            
+            entry_information = ''
+            if entry in bom_entry_info_map:
+                entry_information = '\r\n' + getWhiteSpace(entry_count_highest_digit_count + len('x')) + '\tPart#|URI: ' + bom_entry_info_map[entry]
+                #price_and_annotation = '\t' + getCharInstances('_', (entry_count_highest_digit_count + 1 + object_longest_label_len + material_longest_label_len)) #+ object_longest_dimension_string_length
+            else:
+                if debug:
+                    print('No information for entry: ', entry)
+                    
+            bom = bom + '\r\n'
+        #bom = bom + '\r\n'
             
         # Assemblies (including count):
         if (context.scene.selection2bom_in_mode == '2'):
