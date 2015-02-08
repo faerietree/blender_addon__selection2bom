@@ -907,7 +907,15 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         z = context.active_object.dimensions[2]
         global cache_resolved_dupli_group_dimensions_map
         cache_resolved_dupli_group_dimensions_map[o.dupli_group] = context.active_object.dimensions.copy()  # <-- Can't store the reference as this object is just temporary. Might require recheck of validity, though such invalidation while executing the selection2bom script is impossible in blender as of now (check revision time) because the objects can't be manipulated while the operator (addon) is executing.
-        
+         
+        # Apply scale of this (empty) object as it might be scaled itself:
+        x *= o.scale[0]
+        y *= o.scale[1]
+        z *= o.scale[2]
+        x *= o.delta_scale[0]
+        y *= o.delta_scale[1]
+        z *= o.delta_scale[2]
+       
         ##Undo now no longer required (copy instead of selected_object reference for recursion used now)
         #while --undo_count > 0:
         #    bpy.ops.ed.undo()
