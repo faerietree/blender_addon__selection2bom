@@ -1183,13 +1183,14 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
             whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
             bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) +  str(entry_count) + 'x ' + processEntry(entry)
             
-            if entry in bom_entry_info_map:
-                entry_information = '\r\n' + getWhiteSpace(entry_count_highest_digit_count + len('x')) + '\tPart#|URI: ' + bom_entry_info_map[entry]
-                bom = bom + entry_information
-                #price_and_annotation = '\t' + getCharInstances('_', (entry_count_highest_digit_count + 1 + object_longest_label_len + material_longest_label_len)) #+ object_longest_dimension_string_length
-            else:
-                if debug:
-                    print('No information for entry: ', entry)
+            if context.scene.selection2bom_in_include_info_line:
+                if entry in bom_entry_info_map:
+                    entry_information = '\r\n' + getWhiteSpace(entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) + len('x ')) + '\t' + bom_entry_info_map[entry]
+                    bom = bom + entry_information
+                    #price_and_annotation = '\t' + getCharInstances('_', (entry_count_highest_digit_count + 2 + object_longest_label_len + material_longest_label_len)) #+ object_longest_dimension_string_length
+                else:
+                    if debug:
+                        print('No information for entry: ', entry)
                     
             bom = bom + '\r\n'
         #bom = bom + '\r\n'
@@ -1486,6 +1487,9 @@ class VIEW3D_PT_tools_selection2bom(bpy.types.Panel):
         row = layout.row(align=True)
         row.prop(s, 'selection2bom_in_precision')
 
+        row = layout.row(align=True)
+        row.prop(s, 'selection2bom_in_include_info_line')
+        
         #col = layout.column(align=True)
         #col.row().prop(s, 'selection2bom_in_scale_factor')#better use the unit settings in scene tab
                 
@@ -1549,11 +1553,11 @@ def register():
         default='0'
     )
     #tidyupnames
-    bpy.types.Scene.selection2bom_in_include_hidden = BoolProperty(
-        name = "Include hidden objects?",
-        description = "Whether to include hidden objects or not.",
-        default = True
-    )
+    #bpy.types.Scene.selection2bom_in_include_hidden = BoolProperty(
+    #    name = "Include hidden objects?",
+    #    description = "Whether to include hidden objects or not.",
+    #    default = True
+    #)
     #precision
     bpy.types.Scene.selection2bom_in_precision = IntProperty(
         name = "Precision ",
@@ -1572,6 +1576,12 @@ def register():
         ,max = 1000000
         ,default = 1#keep scale 
     )
+    # Shall include extra information (description, URI, ..) line:
+    bpy.types.Scene.selection2bom_in_include_info_line = BoolProperty(
+        name = "Include datablock label?",
+        description = "Whether to include an extra line per BoM entry for e.g. URI, part number, description, ...",
+        default = True
+    )
     #pass
 
 
@@ -1582,9 +1592,10 @@ def unregister():
     #bpy.utils.unregister_class(VIEW3D_PT_tools_selection2bom)
     #please tidy up
     del bpy.types.Scene.selection2bom_in_mode
-    del bpy.types.Scene.selection2bom_in_include_hidden
+    #del bpy.types.Scene.selection2bom_in_include_hidden
     del bpy.types.Scene.selection2bom_in_precision
-    del bpy.types.Scene.selection2bom_in_scale_factor
+    del bpy.types.Scene.selection2bom_in_include_info_line
+    #del bpy.types.Scene.selection2bom_in_scale_factor
     #pass
 
 
