@@ -1183,9 +1183,9 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
             whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
             bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) +  str(entry_count) + 'x ' + processEntry(entry)
             
-            entry_information = ''
             if entry in bom_entry_info_map:
                 entry_information = '\r\n' + getWhiteSpace(entry_count_highest_digit_count + len('x')) + '\tPart#|URI: ' + bom_entry_info_map[entry]
+                bom = bom + entry_information
                 #price_and_annotation = '\t' + getCharInstances('_', (entry_count_highest_digit_count + 1 + object_longest_label_len + material_longest_label_len)) #+ object_longest_dimension_string_length
             else:
                 if debug:
