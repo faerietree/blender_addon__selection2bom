@@ -155,13 +155,13 @@ def act(context):
     initaddon(context)
 
     if debug:
-        print('engine started ... (acting according to setting)')
+        print('Engine started ... (acting according to setting)')
     ############
     #preparation - selection
     ############
     scene_layers_to_restore = list(context.scene.layers)
-    if debug:
-        print('Should be true: ', id(scene_layers_to_restore), ' != ', id(context.scene.layers))
+    #if debug:
+    #    print('Should be true: ', id(scene_layers_to_restore), ' != ', id(context.scene.layers))
     
     #----------#
     # At this point a selection must have been made either using
@@ -367,8 +367,10 @@ def is_longest_object_label_then_store_len(o):
     letter_count = len(o_label)
     if (letter_count > object_longest_label_len):
         object_longest_label_len = letter_count
-    if debug:
-        print("Keeping track of longest object label's length. Longest length: ", object_longest_label_len)
+        if debug:
+            print("Keeping track of longest object label's length. New longest length: ", object_longest_label_len)
+    #elif debug:
+    #    print("Keeping track of longest object label's length. Longest length (no change): ", object_longest_label_len)
 
 
 
@@ -391,8 +393,10 @@ def is_longest_material_then_store_len(material_label='', material=None):
     letter_count = len(m_label)
     if (letter_count > material_longest_label_len):
         material_longest_label_len = letter_count
-    if debug:
-        print('Keeping track of longest material label\'s length. Longest length: ', material_longest_label_len)
+        if debug:
+            print('Keeping track of longest material label\'s length. Longest length: ', material_longest_label_len)
+    #elif debug:
+    #    print('Keeping track of longest material label\'s length. Longest length (no change): ', material_longest_label_len)
 
 
 
@@ -405,8 +409,10 @@ def is_longest_entry_count_then_store_len(entry_count):
     count = len(str(entry_count))
     if (count > entry_count_highest_digit_count):
         entry_count_highest_digit_count = count
-    if debug:
-        print("Keeping track of longest entry count, i.e. highest digit count: ", entry_count_highest_digit_count)
+        if debug:
+            print("Keeping track of longest entry count, i.e. highest digit count: ", entry_count_highest_digit_count)
+    #elif debug:
+    #    print("Keeping track of longest entry count, i.e. highest digit count (no change): ", entry_count_highest_digit_count)
 
 
 
@@ -633,12 +639,12 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
     
     # Also give parent group instance/assembly to allow to inherit its delta transforms:
     bom_entry = build_bom_entry(context, o, owning_group_instance_objects)#http://docs.python.org/3/tutorial/datastructures.html#dictionaries => items() 
-    if debug:
-        print('Generated BoM entry: ', bom_entry)
+    #if debug:
+    print('Generated BoM entry: ', bom_entry)
     
     # Store info like URL, part number, ...
     if o.data:
-        bom_entry_info = o.data.name  # Object data (e.g. mesh) makes sense as base parts, as modifiers operate on objects. i.e. if the mesh is equal, then the part to be ordered also probably is equal. e.g. Many things can be manufactured out of a metal block.
+        bom_entry_info = getBaseName(o.data.name)  # Object data (e.g. mesh) makes sense as base parts, as modifiers operate on objects. i.e. if the mesh is equal, then the part to be ordered also probably is equal. e.g. Many things can be manufactured out of a metal block.
         # Though if the size is different this requires to duplicate and change the data (scale the mesh). A workaround for this is to multiply by the object scale but that's not helping if the link is pointing to a too small/big part as the URI generally can't be corrected automatically.
         # Upside is that the amount of data to maintain is less. Though as objects can be interlinked too, that may be true for objects too. Though often rotation and location is wanted separate which would lead to lots of redundant URLs, ... to adapt.
         # Despite that issue, this approach is taken. The persuading argument is that often the link points to a page where the part can be bought from. These pages often let select a size, which obsoletes the issue as the link to several part sizes is the same. For part numbers this is not true. Though part numbers are discouraged as they are an artificial map between parts, introducing a new layer of things to lookup which is not helpful. A part is already completely identified by the function it fulfills and its dimension.
@@ -647,7 +653,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
         else:
             if bom_entry_info_map[bom_entry] != bom_entry_info:
                 if debug:
-                   print('build_and_store_bom_entry(): Info already determined but the new information is different: current: ', bom_entry_info_map[bom_entry], ' vs. new: ', bom_entry_info)
+                   print('build_and_store_bom_entry(): Info already determined but the new information differs. current: ', bom_entry_info_map[bom_entry], ' vs. new: ', bom_entry_info)
             
 
     # Keep track of how many BoM entries of same type have been found.
@@ -703,7 +709,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects):#http:/
         if debug:
             print('Assembly:', assembly_bom_entry, ' -> new part count: ', assembly_bom_entry_count_map[assembly_bom_entry][bom_entry], 'x ', bom_entry)
     
-    print('----*done*,constructed bom entries.')
+    print('----*done*,constructed and stored global Bill of materials and Assembly listing entries.')
     return bom_entry
     
     
@@ -853,6 +859,7 @@ def build_bom_entry(context, o, owning_group_instance_objects):
     # If provided inherit parent group instances' transforms:
     # If o owning_o equality and skip if equal (see performance hack, it's done to avoid removing element from the list which is live and still needed later).
         
+    global cache_resolved_dupli_group_dimensions_map
     if o.dupli_group and o.dupli_group in cache_resolved_dupli_group_dimensions_map:
         if debug:
             print('Skipping time costly resolving due to dupli group dimensions cache ... (for an environmental friendly planet)')
@@ -862,8 +869,8 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         
     elif (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
 
-        if debug:
-            print('Creating temporary selection. o: ', o, ' dupli_group: ', o.dupli_group)#To be undone or unexpected results will
+        #if debug:
+        print('Creating temporary selection. o: ', o, ' dupli_group: ', o.dupli_group)#To be undone or unexpected results will
             # occur as the loop uses a live copy of selection. <-- No longer valid!
             # Now using a copy of the dict for the recursion create_bom_entry_recursively.
         
@@ -905,7 +912,6 @@ def build_bom_entry(context, o, owning_group_instance_objects):
         x = context.active_object.dimensions[0]
         y = context.active_object.dimensions[1]
         z = context.active_object.dimensions[2]
-        global cache_resolved_dupli_group_dimensions_map
         cache_resolved_dupli_group_dimensions_map[o.dupli_group] = context.active_object.dimensions.copy()  # <-- Can't store the reference as this object is just temporary. Might require recheck of validity, though such invalidation while executing the selection2bom script is impossible in blender as of now (check revision time) because the objects can't be manipulated while the operator (addon) is executing.
          
         # Apply scale of this (empty) object as it might be scaled itself:
@@ -1154,6 +1160,9 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
         filelink = build_filelink(context)
     if debug:
         print('Target filelink: ', filelink)
+        print('Highest entry count string char count: ', entry_count_highest_digit_count)
+        print('Highest object label char count: ', object_longest_label_len)
+        print('Highest material char count: ', material_longest_label_len)
         
     #write to file
     result = False
@@ -1161,9 +1170,9 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
         #f.read()
         #f.readhline()
         
-        bom = getWhiteSpace(entry_count_highest_digit_count) + '# \tLabel' + getWhiteSpace(object_longest_label_len - 5) + '\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\tDimensions'
+        bom = getWhiteSpace(entry_count_highest_digit_count) + '#  \tLabel' + getWhiteSpace(object_longest_label_len - 5) + '\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\tDimensions'
         bom = bom + '\r\n'
-        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '- \t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t----------'
+        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-  \t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t----------'
         bom = bom + '\r\n'
         # Total part (counts):
         for entry, entry_count in bom_entry_count_map.items(): 
@@ -1375,18 +1384,19 @@ def isThereActiveObjectThenGet(context):
 #HELPER - GETBASENAME
 #@return string:basename aka cleanname
 def getBaseName(s):
-    obj_basename_parts = s.split('.')
+    delimiter = '.'
+    obj_basename_parts = s.split(delimiter)
     obj_basename_parts_L = len(obj_basename_parts)
     #if debug:
     #    print('getBaseName: Last part: ', obj_basename_parts[obj_basename_parts_L - 1])
     if (obj_basename_parts_L > 1
     and re.match('[0-9]{3}$', obj_basename_parts[obj_basename_parts_L - 1])):
-    #    if debug:
-    #        print('getBaseName: determining base name')
+        #if debug:
+        #    print('getBaseName: determining base name')
         # Attention: Last item is left out intentionally (don't remove the '- 1').
-        cleanname = ''
-        for i in range(0, obj_basename_parts_L - 1):
-            cleanname += obj_basename_parts[i]
+        cleanname = obj_basename_parts[0]
+        for i in range(1, obj_basename_parts_L - 1):
+            cleanname += delimiter + obj_basename_parts[i]
         #done this strange way to avoid unnecessary GUI updates
         #as the sel.name fields in the UI may be unnecessarily updated on change ...
         #if debug:
