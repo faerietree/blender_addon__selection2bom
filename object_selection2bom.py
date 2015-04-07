@@ -974,10 +974,10 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
             print('Keeping track of new variant/kind/post-processing of bom_entry ', bom_entry, ': volume: ', volume)
         bom_entry_variant_map[bom_entry][volume] = 1
         # Generate blueprint:
-        blueprint_filelink = filelink + '__entry_' + bom_entry + '__volume_' + str(volume) + '__blueprint.jpg'
-        
         if context.scene.selection2bom_in_include_blueprints and bpy.types.Scene.blueprint_settings:
         #    bpy.types.Scene.blueprint_settings.filelink = blueprint_filelink
+            blueprint_filelink = build_blueprint_filelink(filelink, entry, volume)
+        
             print("blueprint filelink previous: ", context.scene.blueprint_settings.filelink)
             filepath_old = context.scene.render.filepath
             context.scene.render.filepath = blueprint_filelink
@@ -1449,8 +1449,7 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
             if (context.scene.selection2bom_in_include_blueprints):
                 if entry in bom_entry_variant_map:
                     for variant_volume, variant_count in bom_entry_variant_map[entry].items():
-                        # TODO This filelink might be too long for most filesystems.
-                        blueprint_filelink = filelink + '__entry_' + entry + '__volume_' + str(variant_volume) + '__blueprint.jpg'
+                        blueprint_filelink = build_blueprint_filelink(filelink, entry, variant_volume)
                         blueprint = '<img src="'+ blueprint_filelink +'" title="Volume: ' + str(variant_volume) + '" alt="blueprint"/>' 
                         head = '\r\n' + getWhiteSpace(entry_count_highest_digit_count - len(str(variant_count)) + len(PREPEND_IF_OPTIONAL)) + str(variant_count) + 'x \t' + blueprint #+ variant_volume
                         #body = '\r\n' + getWhiteSpace(entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) + len('x ')) + '\t' + blueprint
@@ -1506,7 +1505,21 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
             print('Bill of materials: creation failed! ', filelink)
     return result
         
+
+
+def build_blueprint_filelink(filelink, entry, variant_volume):
+    root = bpy.path.abspath('//')
+    filelink_relative_to_blend = filelink.replace('^' + root, '')
+    if filelink_relative_to_blend.startswith('/'):
+        filelink_relative_to_blend = filelink_relative_to_blend.replace('^/', '')
+    print(filelink_relative_to_blend)
     
+    # TODO This filelink might be too long for most filesystems.
+    blueprint_filelink = filelink_relative_to_blend + '__entry_' + entry + '__volume_' + str(variant_volume) + '__blueprint.jpg'
+
+    return blueprint_filelink
+    
+
 
 # This bom entry is appended to a file.
 def append_bom_entry_to_file(context, bom_entry):
