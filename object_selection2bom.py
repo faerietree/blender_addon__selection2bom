@@ -972,7 +972,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
         bom_entry_variant_map[bom_entry] = {}
         if debug:
             print('Keeping track of new variant/kind/post-processing of bom_entry ', bom_entry, ': volume: ', volume)
-        bom_entry_variant_map[bom_entry][volume] = 0
+        bom_entry_variant_map[bom_entry][volume] = 1
         # Generate blueprint:
         blueprint_filelink = filelink + '__entry_' + bom_entry + '__volume_' + str(volume) + '__blueprint.jpg'
         
