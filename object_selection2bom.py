@@ -976,8 +976,10 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
         # Generate blueprint:
         if context.scene.selection2bom_in_include_blueprints and bpy.types.Scene.blueprint_settings:
         #    bpy.types.Scene.blueprint_settings.filelink = blueprint_filelink
-            blueprint_filelink = build_blueprint_filelink(filelink, entry, volume)
-        
+            blueprint_filelink_relative = build_blueprint_filelink(filelink, entry, volume)
+            # Using the filelink relative to the open .blend file.
+            root = bpy.path.abspath('//')
+            blueprint_filelink = root + blueprint_filelink_relative 
             print("blueprint filelink previous: ", context.scene.blueprint_settings.filelink)
             filepath_old = context.scene.render.filepath
             context.scene.render.filepath = blueprint_filelink
@@ -1509,13 +1511,13 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
 
 def build_blueprint_filelink(filelink, entry, variant_volume):
     root = bpy.path.abspath('//')
-    filelink_relative_to_blend = filelink.replace('^' + root, '')
+    filelink_relative_to_blend = filelink.replace(root, '')
     if filelink_relative_to_blend.startswith('/'):
-        filelink_relative_to_blend = filelink_relative_to_blend.replace('^/', '')
+        filelink_relative_to_blend = '.' + filelink_relative_to_blend#.replace('^/', '')
     print(filelink_relative_to_blend)
     
     # TODO This filelink might be too long for most filesystems.
-    blueprint_filelink = filelink_relative_to_blend + '__entry_' + entry + '__volume_' + str(variant_volume) + '__blueprint.jpg'
+    blueprint_filelink = filelink_relative_to_blend + '__entry_' + entry.replace(' ', '_').replace('[', '').replace(']', '') + '__volume_' + str(variant_volume) + '__blueprint.jpg'
 
     return blueprint_filelink
     
@@ -1568,7 +1570,9 @@ def build_filelink(context, prepend=''):
     #root = dirname(pathname(__FILE__))#http://stackoverflow.com/questions/5137497/find-current-directory-and-files-directory
     filename = prepend + 'BoM-' # TODO How to determine this blend file's name?
     fileending = '.txt'
-    
+    if context.scene.selection2bom_in_include_blueprints and hasattr(context.scene, "blueprint_settings"):
+        fileending = '.md' # Markdown format for showing images directly on the git mirror, e.g. Github. Though html also works because the syntax is html.
+        
     #objectname = getBaseName(context.selected_objects[0].name)
     objectname = None
     if context.active_object:
