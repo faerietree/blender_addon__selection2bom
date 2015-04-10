@@ -696,7 +696,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
                 print('Assembly: From now on keeping track of bom_entry count of ', bom_entry)
             assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = 0
     
-        assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] + 1
+        assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] += 1
         if debug:
             print('Assembly:', assembly_bom_entry, ' -> new part count: ', assembly_bom_entry_count_map[assembly_bom_entry][bom_entry], 'x ', bom_entry)
     
@@ -869,6 +869,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
 
         #if debug:
         print('o ', o, ' dupli_group: ', o.dupli_group)
+        context.scene.objects.active = o
         bpy.ops.object.resolve_and_join()
         resulting_o = context.scene.objects.active
         
@@ -972,6 +973,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
         bom_entry_variant_map[bom_entry] = {}
         if debug:
             print('Keeping track of new variant/kind/post-processing of bom_entry ', bom_entry, ': volume: ', volume)
+    if not (volume in bom_entry_variant_map[bom_entry]):
         bom_entry_variant_map[bom_entry][volume] = 1
         # Generate blueprint:
         if context.scene.selection2bom_in_include_blueprints and bpy.types.Scene.blueprint_settings:
@@ -990,7 +992,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
         else:
             print('Error: Blender extension selection2blueprint not installed or activated.')
 
-    # Follow-up encounter of the entry:
+    # Follow-up encounter of this postprocessed/volume variant of the entry:
     else:
         bom_entry_variant_map[bom_entry][volume] += 1
     
@@ -1091,10 +1093,15 @@ class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
             if o in objects_to_be_joined:
                 print('Skipping object to be deleted because it may (rather should) have been joined: ', o)
                 continue
-            if o and not (o is resulting_object):
+            if o is resulting_object:
+                print("Skipping object to be deleted because it is the resulting object after the join.")
+                continue
+            if o:
                 o.select
         print(context.selected_objects, " active: ", context.active_object)
-        bpy.ops.object.delete()
+        print("Deleting ...")
+        if len(context.selected_objects) > 0:
+            bpy.ops.object.delete()
         print("*done*")
         
         print("Resolve and join finished, required: %.4f sec" % (time.time() - time_start))
@@ -1313,7 +1320,7 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     if (context.scene.objects.active.type == 'MESH'):
         # No need to delete the object because it is joined, which also removes it if it's not the join target.
         objects_to_be_joined.append(context.scene.objects.active)
-    else:  
+    else:
         objects_to_be_deleted.append(context.scene.objects.active) # It's safer here as joining into an active object keeps up the active object of course. Thus the object should be deleted but it is not as it has been marked for join. Thus better not even mark for deletion.
 
     # Further decomposition possible? 
@@ -1321,13 +1328,15 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
         # Store a reference because it's not certain that an operator not changes the active object.
         group_instance_object = context.scene.objects.active
         if debug:
-            print('Making real ...') 
+            print('Making real ... active: ', context.scene.objects.active) 
         #the active object (group instance) should be the only selected one:
+        group_instance_object.dupli_type = 'GROUP' # Turned the function into an operator, then a bug appeared: the dupli_type was cleared, somehow set to None.
         bpy.ops.object.duplicates_make_real(use_base_parent=True)#false because we don't set up
                 #the empty group instance as parent of the now copied and no longer referenced group objects!
                 #The dupli group attached to this object
                 #is copied here as real value object copies (not references). Though as it's apparently linked,
                 #making single user is required:
+        print('Making single user ... selected objects: ', context.selected_objects)   
         bpy.ops.object.make_single_user(type='SELECTED_OBJECTS', object=True, obdata=True)
         #Note:
         # The real objects (including the group instance's empty!) that now reside where the group instance was before
@@ -1342,10 +1351,10 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
         group_objects = context.selected_objects
         #selected_objects_count = 0
         for group_object in group_objects:
-            # If EMPTY is a considered type, then the empty corresponding to the current object (that also reside after duplicates_make_real) must be skipped:
-            if (group_object == group_instance_object):
+            # If EMPTY is a considered type, then the empty corresponding to the current object (that also resides after duplicates_make_real) must be skipped:
+            if (group_object is group_instance_object):
                 if debug:
-                    print('>> Skipping group object because it\'s the group instance object itself.')
+                    print('>> Skipping group object %s because it\'s the group instance object %s itself.' % (group_object, group_instance_object))
                 continue
             if (not is_object_type_considered(group_object.type)):
                 print ('Warning: Group object\'s type is not considered.')
@@ -1491,6 +1500,7 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
                     if (entry.split('___')[3] != ''):
                         pre = PREPEND_IF_OPTIONAL 
                     count_string = str(int(round(entry_count/assembly_count, 0)))# + '(' + str(entry_count) + ')')
+                    print(count_string, " = entry_count: ", entry_count, " / assembly_count: ", assembly_count)
                     digit_count = len(count_string + pre)
                     whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
                     bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) + count_string + 'x ' + processEntry(entry)
