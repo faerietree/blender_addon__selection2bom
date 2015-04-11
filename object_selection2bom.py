@@ -1193,13 +1193,16 @@ def apply_modifiers(context, obj):
     # apply modifiers from top to bottom:
     modifier_count = len(obj.modifiers)
     modifiers_index = 0
+    object_to_layers_to_restore_map = {}
     while (modifiers_index < modifier_count):
         m = obj.modifiers[modifiers_index]
         print('Applying modifier: ', m)
         if hasattr(m, "object"):
             print(' object: ', m.object)
-            for l_i in range(0, len(m.object.layers)):
-                m.object.layers[l_i] = True
+            object_to_layers_to_restore_map[m.object] = m.object.layers # Copying should not be required, because the object still exists at the memory address and no matter if the memory where the layers variable is pointing to is changed, the map value still bears the old memory address, which thus stays in memory. Copying would just add clutter which had to be garbage collected.
+            m.object.layers = obj.layers#<- not copying because the pointer is overridden immediately again, which prevents unintentional side effects which'd be major reason for copying. list(obj.layers)
+            #for l_i in range(0, len(m.object.layers)):
+            #    m.object.layers[l_i] = True
             #NOT CERTAIN THAT THIS OBJECT HAS BEEN ADDED, ONLY SCRIPT-ADDED THINGS ARE REMOVED AGAIN. if m.object.type == 'MESH':
             #    objects_to_be_deleted.append(object_for_intersection)
         if hasattr(m, "operation"):
@@ -1207,6 +1210,10 @@ def apply_modifiers(context, obj):
         bpy.ops.object.modifier_apply(apply_as='DATA',modifier=m.name)
         #modifiers_index += 1 <- because the others are shifted upwards.
         modifier_count -= 1
+        
+    # Restoring layer configuration ...
+    for o, layers in object_to_layers_to_restore_map.items():
+        o.layers = layers
     
     context.scene.objects.active = active_old
 
