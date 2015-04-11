@@ -437,7 +437,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
     #-------
     # OBJECT?
     #-------
-    if ( (o_bjects is object) or (type(o_bjects) is object) or (type(o_bjects) is bpy.types.Object) ):
+    if type(o_bjects) is bpy.types.Object:
         
         is_longest_object_label_then_store_len(o_bjects)
         if debug:
@@ -533,6 +533,10 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                     print('Resolved a group. Count of objects in group: ', len(resolve_group_result))
                 owning_group_instance_objects.append(o_bjects) 
                 for obj in resolve_group_result:
+                    print(obj, " == ", o_bjects)
+                    if obj == o_bjects or obj.name == o_bjects.name:
+                        print("Skipping resolved object because it is the given object itself: ", obj)
+                        continue
                     create_bom_entry_recursively(context, obj, owning_group_instance_objects, recursion_depth=(recursion_depth + 1), filelink=filelink)
                 
                 owning_group_instance_objects.remove(o_bjects)
@@ -589,11 +593,13 @@ def is_object_type_considered(object_type):
             #or not skip_non_mechanical_objects;#<- overwrites the above and renders all types valid
     #EMPTY for group instances (even though instances can be attached to any other than empty object too!)
 
+PATTERN_OPTIONAL = '(optional' + '[-_ ]+|[-_ ]+optional)'
+PATTERN_ATOM = '(atom' + '[-_ ]+|[-_ ]+atom)'
 def is_object_atomar(o):
-    return (re.search('^' + 'atom' + '[-_: ]+', o.name.lower()) != None)
+    return (re.search(PATTERN_ATOM, o.name.lower()) != None)
     
 def is_object_optional(o):
-    return (re.search('^' + 'optional' + '[-_: ]+', o.name.lower()) != None)
+    return (re.search(PATTERN_OPTIONAL, o.name.lower()) != None)
     
 
 
@@ -653,6 +659,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
     if (context.scene.selection2bom_in_mode == '2'):
         # In hybrid mode the assemblies are listed separately.
         # Should not occur in the global parts lists if they are not atomar.
+        ## If they are atomar, then the part needs to be listed in both the assembly and the global part lists.
         if debug:
             print('==========> dupli_group: ', o.dupli_group)
         if (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
@@ -662,20 +669,17 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
                 if debug:
                     print('Assembly found: ', o, '\r\n=> Putting into assembly_count_map.')
                 count_map = assembly_count_map
-        
-    if (not (bom_entry in count_map)):
-        if debug:
-            print('From now on keeping track of bom_entry count of ', bom_entry)
-        count_map[bom_entry] = 0
-        
-    count_map[bom_entry] = count_map[bom_entry] + 1
-    if debug:
-        print('-> new part count: ', count_map[bom_entry], 'x ', bom_entry)
-    # To know how much compensating whitespace to insert later:
-    is_longest_entry_count_then_store_len(count_map[bom_entry])  
-    
+            #else:
+            #    # Both maps need to be incremented if atomar.
+            #    increment_entry_in_map(bom_entry, assembly_count_map)
+                
+    increment_entry_in_map(bom_entry, count_map)
+
     # Have to add assembly entry?
     owning_group_instance_objects_length = len(owning_group_instance_objects)
+    if bom_entry.find("Sheet_Bucket_Side_Bolted"):
+        print(owning_group_instance_objects_length)
+        
     if (owning_group_instance_objects_length > 0):
     #for i in range(owning_group_instance_objects_length - 1, -1):
         # Important Note: The last item of the list could be spliced out! It's not done for performance. It's tested if for equality and skipped instead - in build_bom_entry().
@@ -704,6 +708,19 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
     return bom_entry
     
     
+
+def increment_entry_in_map(bom_entry, count_map):
+    if (not (bom_entry in count_map)):
+        if debug:
+            print('From now on keeping track of bom_entry count of ', bom_entry)
+        count_map[bom_entry] = 0
+        
+    count_map[bom_entry] = count_map[bom_entry] + 1
+    if debug:
+        print('-> new part count: ', count_map[bom_entry], 'x ', bom_entry)
+    # To know how much compensating whitespace to insert later:
+    is_longest_entry_count_then_store_len(count_map[bom_entry])  
+
     
  
 #    
@@ -802,8 +819,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
     atomar_indicator = 'atom'
     index = entry.find('' + atomar_indicator)
     if (index != -1):
-        pattern = '' + atomar_indicator + '[-_: ]+'
-        entry = re.sub(pattern, '', entry)
+        entry = re.sub(PATTERN_ATOM, '', entry)
         #parts = entry.split(atomar_indicator)
         #parts_length = len(parts)
         #if (parts_length > 1):
@@ -817,8 +833,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
     indicator = 'optional'
     index = entry.find('' + indicator)
     if (index != -1):
-        pattern = indicator + '[-_: ]+'
-        entry = re.sub(pattern, '', entry)
+        entry = re.sub(PATTERN_OPTIONAL, '', entry)
     
 
     #keep track of the longest material label
@@ -1088,7 +1103,7 @@ class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
         print("*done* Resulting object: ", resulting_object)
         # Tidy up:
         print("Tidying up ...")
-        print("Deleting objects: ", objects_to_be_deleted, " exceptions: ", objects_to_be_joined)
+        #leads to segmentation fault probably to missing pointer validity check in 'to string' function: print("Deleting objects: ", objects_to_be_deleted, " exceptions: ", objects_to_be_joined)
         bpy.ops.object.select_all(action='DESELECT')
         for o in objects_to_be_deleted:
             if o in objects_to_be_joined:
