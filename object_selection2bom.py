@@ -728,8 +728,8 @@ def deselect_all(context):
 # Constructing an entry for the bill of materials,
 # i.e. figuring properties.
 #
-cache_resolved_dupli_group_dimensions_map = {}
-cache_resolved_dupli_group_volume_map = {}
+cache_resolved_dupli_group_dimensions_map = None
+cache_resolved_dupli_group_volume_map = None
 def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
     if debug:
         print('build_bom_entry: o:', o, ' owning_group_instance_objects:', owning_group_instance_objects)
@@ -826,26 +826,13 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
     
     #dimensions
     context.scene.objects.active = o
-    result = {'CANCELLED'}
-    #operations_to_undo_count = 0
-    #if (not (context.active_object is None)):
-    #    #because multi-user mesh does not allow applying modifiers
-    #    if (bpy.ops.object.make_single_user(object=True, obdata=True)):#, material=True, texture=True, animation=True)):
-    #        operations_to_undo_count = operations_to_undo_count + 1
-    #        for m in o.modifiers:
-    #            result = bpy.ops.object.modifier_apply(modifier=m.name)
-    #            #bpy.ops.object.modifier_apply()#'DATA', '')#applies on the active object
-    #            if (result):
-    #                operations_to_undo_count = operations_to_undo_count + 1
     
     
     #######
     # DIMENSIONS
     #######
-    #TODO Take dimension influencing modifiers like array, skin, solidify into account for this object, too (by e.g. applying all modifiers).
-    # modifier_apply() # TODO Figure how to apply one modifier after another.
-    
-    #TODO don't take the absolute bounding_box dimensions -instead calculate from object.bounding_box (list of 24 space coordinates).
+    # Dimension already takes dimension-influencing modifiers like array, skin, solidify into account (applying all modifiers is thus not required).
+    # TODO don't take the absolute bounding_box dimensions - instead calculate from a hull of the object?
     
     #undo_count = 0 #now working with a copy of the initially selected_objects (no longer a live copy/reference)
     x = o.dimensions[0] # As it's in object context, the scale is taken into account in the bounding box already.
@@ -969,34 +956,46 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
          
     
     # First encountered this entry?
-    if not (bom_entry in bom_entry_variant_map):
+    if not (bom_entry in bom_entry_variant_map.keys()):
         bom_entry_variant_map[bom_entry] = {}
         if debug:
             print('Keeping track of new variant/kind/post-processing of bom_entry ', bom_entry, ': volume: ', volume)
-    if not (volume in bom_entry_variant_map[bom_entry]):
+            
+    if not (volume in bom_entry_variant_map[bom_entry].keys()):
         bom_entry_variant_map[bom_entry][volume] = 1
         # Generate blueprint:
-        if context.scene.selection2bom_in_include_blueprints and bpy.types.Scene.blueprint_settings:
-        #    bpy.types.Scene.blueprint_settings.filelink = blueprint_filelink
-            blueprint_filelink_relative = build_blueprint_filelink(filelink, entry, volume)
-            # Using the filelink relative to the open .blend file.
-            root = bpy.path.abspath('//')
-            blueprint_filelink = root + blueprint_filelink_relative 
-            print("blueprint filelink previous: ", context.scene.blueprint_settings.filelink)
-            filepath_old = context.scene.render.filepath
-            context.scene.render.filepath = blueprint_filelink
-            bpy.ops.scene.blueprint_filelink_set()
-            context.scene.render.filepath = filepath_old
-            print("blueprint filelink new: ", context.scene.blueprint_settings.filelink, " <- object: ", resulting_o)
-            generate_engineering_drawing(context, resulting_o)
-        else:
-            print('Error: Blender extension selection2blueprint not installed or activated.')
-
+        if context.scene.selection2bom_in_include_blueprints:
+            if bpy.types.Scene.blueprint_settings:
+            #    bpy.types.Scene.blueprint_settings.filelink = blueprint_filelink
+                blueprint_filelink_relative = build_blueprint_filelink(filelink, entry, volume)
+                # Using the filelink relative to the open .blend file.
+                root = bpy.path.abspath('//')
+                blueprint_filelink = root + blueprint_filelink_relative 
+                print("blueprint filelink previous: ", context.scene.blueprint_settings.filelink)
+                filepath_old = context.scene.render.filepath
+                context.scene.render.filepath = blueprint_filelink
+                bpy.ops.scene.blueprint_filelink_set()
+                context.scene.render.filepath = filepath_old
+                print("blueprint filelink new: ", context.scene.blueprint_settings.filelink, " <- object: ", resulting_o)
+                generate_engineering_drawing(context, resulting_o)
+            else:
+                print("Error: Blender extension 'selection to blueprint' not installed or activated.")
     # Follow-up encounter of this postprocessed/volume variant of the entry:
     else:
         bom_entry_variant_map[bom_entry][volume] += 1
-    
-    
+        
+        
+    # TIDY UP:
+    # Delete the join target if it is not the object that has to be resolved itself, which must be handled by the calling function that gave this object as a parameter to this function.
+    if resulting_o != o:
+        # delete it:
+        bpy.ops.object.select_all(action='DESELECT')
+        # still valid?
+        if resulting_o:
+            resulting_o.select = True
+            print("deleting resulting_o: ", resulting_o)
+            bpy.ops.object.delete()
+        
     return bom_entry
 
 
@@ -1055,6 +1054,7 @@ class OBJECT_OT_ResolveRecursively(bpy.types.Operator):
         return {'FINISHED'}
 
 
+
 class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
     """Resolves dupli group/ instance / assembly recursively. Then joins all objects into one which then is available as active object."""
     #=======ATTRIBUTES=========================================================#
@@ -1082,25 +1082,27 @@ class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
         print("Initiating resolve of %s and join ..." % context.scene.objects.active)
         objects_to_be_deleted = []
         objects_to_be_joined = []
-        resolve_and_join(context, context.scene.objects.active, objects_to_be_deleted, objects_to_be_joined)
+        object_to_resolve = context.scene.objects.active
+        resolve_and_join(context, object_to_resolve, objects_to_be_joined, objects_to_be_deleted)
         resulting_object = context.scene.objects.active
         print("*done* Resulting object: ", resulting_object)
         # Tidy up:
         print("Tidying up ...")
-        print("Deleting objects: ", objects_to_be_deleted)
+        print("Deleting objects: ", objects_to_be_deleted, " exceptions: ", objects_to_be_joined)
         bpy.ops.object.select_all(action='DESELECT')
         for o in objects_to_be_deleted:
             if o in objects_to_be_joined:
                 print('Skipping object to be deleted because it may (rather should) have been joined: ', o)
                 continue
-            if o is resulting_object:
-                print("Skipping object to be deleted because it is the resulting object after the join.")
+            # Let the decision about when to delete the join target/resulting object and the original object (note if the original object is of type MESH and the join objects are mesh too (or all are CURVE objects consistently), then the resulting object may be the object to resolve (this is currently prevented in code, but it may be at a later point both be allowed to join curves too and to let the object to be resolved be the join target at the same time. Also note the object to be resolved is duplicated before it is resolved/made real.).
+            if o == resulting_object or o == object_to_resolve:
+                print("Skipping object to be deleted because it is the resulting object or initial object to resolve.")
                 continue
             if o:
-                o.select
+                o.select = True
         print(context.selected_objects, " active: ", context.active_object)
-        print("Deleting ...")
         if len(context.selected_objects) > 0:
+            print("Deleting ...")
             bpy.ops.object.delete()
         print("*done*")
         
@@ -1110,44 +1112,45 @@ class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
 
 
 
-def resolve_and_join(context, o, objects_to_be_deleted, objects_to_be_joined=[]):
+def resolve_and_join(context, o, objects_to_be_joined=[], objects_to_be_deleted=[]):
+    
+    resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, objects_to_be_deleted)
+    
+    # Ensure nothing is selected:
+    deselect_all(context)
+    
+    # TODO As resolving group instances recursively is costly, it would be nice to use more of the info gained. 
+    # TODO When to apply modifiers?
+    
+    objects_to_be_joined_length = len(objects_to_be_joined)
+    if objects_to_be_joined_length > 0:
+        for objects_to_be_joined_index in range(0, objects_to_be_joined_length):
+            object_to_be_joined = objects_to_be_joined[objects_to_be_joined_index]
+            object_to_be_joined.select = True
+            apply_modifiers(context, object_to_be_joined)
         
-        resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, objects_to_be_deleted)
-        
-        # Ensure nothing is selected:
-        deselect_all(context)
-        
-        # TODO As resolving group instances recursively is costly, it would be nice to use more of the info gained. 
-        # TODO When to apply modifiers?
-        
-        objects_to_be_joined_length = len(objects_to_be_joined)
-        if objects_to_be_joined_length > 0:
-            for objects_to_be_joined_index in range(0, objects_to_be_joined_length):
-                object_to_be_joined = objects_to_be_joined[objects_to_be_joined_index]
-                object_to_be_joined.select = True
-                apply_modifiers(context, object_to_be_joined)
-        
-            # Arbitrarily choose the last object as target:
-            context.scene.objects.active = objects_to_be_joined[objects_to_be_joined_length - 1]
-            if debug:
-                print(context.selected_objects, '\r\nactive_object: ', context.active_object)
-                print('joining ...')
-            # Attention: Poll may fail because a context of joining into an empty is not valid!
-            if (not bpy.ops.object.join()):
-                print('Joining the temporary selection (all group instances within this group instance duplicated, made real and its dupli groups\' objects recursively treated the same too) failed. Check for unjoinable object types.')
-                #break
-            else:
-                if context.active_object and (not context.active_object is o):
-                    objects_to_be_deleted.append(context.scene.objects.active)
-            if (not context.scene.objects.active):
-                print('WARNING: Active object not set after join operation.')
-            else:
-                context.scene.objects.active.select = True
+        # Arbitrarily choose the last object as target:
+        context.scene.objects.active = objects_to_be_joined[objects_to_be_joined_length - 1]
+        if debug:
+            print(context.selected_objects, '\r\nactive_object: ', context.active_object)
+            print('joining ...')
+        # Attention: Poll may fail because a context of joining into an empty is not valid!
+        if (not bpy.ops.object.join()):
+            print('Joining the temporary selection (all group instances within this group instance duplicated, made real and its dupli groups\' objects recursively treated the same too) failed. Check for unjoinable object types.')
+            #break
+        #else:
+        #    if context.active_object and (not context.active_object == o):
+        #        objects_to_be_deleted.append(context.scene.objects.active)
+        if (not context.scene.objects.active):
+            print('WARNING: Active object not set after join operation.')
         else:
-            print('WARNING: Might have found nothing to join ...')
-            # TODO Use the dimension of the greatest object within its dupligroup (this includes CURVE objects). Only adopt if greater than the currenty evaluated object's dimensions.
-            o.select = True # If the above functionality isn't, then this may be simplified. This is obsolete as it's the default dimension anyway.
-            context.scene.objects.active = o
+            context.scene.objects.active.select = True
+    else:
+        print('WARNING: Might have found nothing to join ...')
+        # TODO Use the dimension of the greatest object within its dupligroup (this includes CURVE objects). Only adopt if greater than the currenty evaluated object's dimensions.
+        o.select = True # If the above functionality isn't, then this may be simplified. This is obsolete as it's the default dimension anyway.
+        context.scene.objects.active = o
+    return context.scene.objects.active
 
 
 
@@ -1171,11 +1174,21 @@ def generate_engineering_drawing(context, obj):
 
 
 
+#
+# NOTE Please give the obj parameter as duplicate object because
+# it will be made single user, which will change the overall object,
+# data relations and is not recommended if the object is needed later.
+#
 def apply_modifiers(context, obj):
     active_old = context.scene.objects.active
     #selection_old = list(context.selected_objects)
     #bpy.ops.object.select_all(action='DESELECT')
     context.scene.objects.active = obj
+    
+    # Because multi-user mesh does not allow applying modifiers:
+    if not (bpy.ops.object.make_single_user(object=True, obdata=True)):#, material=True, texture=True, animation=True)):
+        print("apply_modifiers(): Could not make obj %s single user object, data.", obj)
+        return 
     
     # apply modifiers from top to bottom:
     modifier_count = len(obj.modifiers)
@@ -1305,7 +1318,8 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     else:
         if debug:
             print('active object after duplication of group instance: ', context.active_object, ' or :', context.scene.objects.active)
-   
+            
+    o_duplicate = context.scene.objects.active
    
     # If the objects are duplicated, then they still are in the same groups as the original object. This means the dupli_group suddenly has more members, which leads to endless recursion. Thus remove the duplicates from all groups:
     if debug:
@@ -1319,14 +1333,14 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     # Required because of joining only allows mesh or curve only - no mix!
     if (context.scene.objects.active.type == 'MESH'):
         # No need to delete the object because it is joined, which also removes it if it's not the join target.
-        objects_to_be_joined.append(context.scene.objects.active)
+        objects_to_be_joined.append(o_duplicate)
     else:
-        objects_to_be_deleted.append(context.scene.objects.active) # It's safer here as joining into an active object keeps up the active object of course. Thus the object should be deleted but it is not as it has been marked for join. Thus better not even mark for deletion.
+        objects_to_be_deleted.append(o_duplicate) # It's safer here as joining into an active object keeps up the active object of course. Thus the object should be deleted but it is not as it has been marked for join. Thus better not even mark for deletion.
 
     # Further decomposition possible? 
-    if (not (context.scene.objects.active.dupli_group is None)):
+    if (not (o_duplicate.dupli_group is None)):
         # Store a reference because it's not certain that an operator not changes the active object.
-        group_instance_object = context.scene.objects.active
+        group_instance_object = o_duplicate
         if debug:
             print('Making real ... active: ', context.scene.objects.active) 
         #the active object (group instance) should be the only selected one:
@@ -1352,7 +1366,7 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
         #selected_objects_count = 0
         for group_object in group_objects:
             # If EMPTY is a considered type, then the empty corresponding to the current object (that also resides after duplicates_make_real) must be skipped:
-            if (group_object is group_instance_object):
+            if (group_object == group_instance_object): # the 'is' operator does not work here.
                 if debug:
                     print('>> Skipping group object %s because it\'s the group instance object %s itself.' % (group_object, group_instance_object))
                 continue
