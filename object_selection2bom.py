@@ -533,8 +533,8 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                     print('Resolved a group. Count of objects in group: ', len(resolve_group_result))
                 owning_group_instance_objects.append(o_bjects) 
                 for obj in resolve_group_result:
-                    print(obj, " == ", o_bjects)
-                    if obj == o_bjects or obj.name == o_bjects.name:
+                    print(obj, " ==? ", o_bjects)
+                    if obj == o_bjects:# or obj.name == o_bjects.name:
                         print("Skipping resolved object because it is the given object itself: ", obj)
                         continue
                     create_bom_entry_recursively(context, obj, owning_group_instance_objects, recursion_depth=(recursion_depth + 1), filelink=filelink)
@@ -631,11 +631,14 @@ assembly_bom_entry_count_map = {}
 def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelink=None):#http://docs.python.org/2/tutorial/datastructures.html#dictionaries =>iteritems()
     global bom_entry_count_map
     global bom_entry_info_map
+    global bom_entry_variant_map
     global assembly_count_map
     global assembly_bom_entry_count_map
     
     # Also give parent group instance/assembly to allow to inherit its delta transforms:
-    bom_entry = build_bom_entry(context, o, owning_group_instance_objects, filelink=filelink)#http://docs.python.org/3/tutorial/datastructures.html#dictionaries => items() 
+    bom_entry = build_bom_entry(context, o, owning_group_instance_objects, filelink=filelink, delete_join_result_if_differs=False)#http://docs.python.org/3/tutorial/datastructures.html#dictionaries => items()
+    resulting_o = context.scene.objects.active # for volume calculation.
+    
     #if debug:
     print('Generated BoM entry: ', bom_entry)
     
@@ -652,6 +655,66 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
                 if debug:
                    print('build_and_store_bom_entry(): Info already determined but the new information differs. current: ', bom_entry_info_map[bom_entry], ' vs. new: ', bom_entry_info)
             
+    
+    # NOTE This may be moved to build_bom_entry once it is included in the bom entry itself. Currently volume is treated separately.
+    volume = -1
+    global cache_resolved_dupli_group_volume_map
+    if o.dupli_group and o.dupli_group in cache_resolved_dupli_group_volume_map:
+        volume = cache_resolved_dupli_group_volume_map[o.dupli_group]
+        print("Using cached volume: ", volume)
+    elif resulting_o.type != 'EMPTY':
+        # Used for distinguishing variants, e.g. different post-processing like different holes, cuts, edges, ...
+        volume = calculate_volume(context, resulting_o)
+        volume = round(volume, context.scene.selection2bom_in_precision)
+        if o.dupli_group:# and len(o.dupli_group.objects) > 0:
+            cache_resolved_dupli_group_volume_map[o.dupli_group] = volume
+    else:
+        print("Neither dupli group to resolve nor supported object type for volume calculation for object: ", resulting_o, " type: ", resulting_o.type, " dupli group:", resulting_o.dupli_group)
+    
+    if volume != -1:
+        # First encountered this entry volume variant?
+        if not (bom_entry in bom_entry_variant_map.keys()):
+            bom_entry_variant_map[bom_entry] = {}
+            if debug:
+                print('Keeping track of new variant/kind/post-processing of bom_entry ', bom_entry, ': volume: ', volume)
+                
+        if not (volume in bom_entry_variant_map[bom_entry].keys()):
+            bom_entry_variant_map[bom_entry][volume] = 1
+            # Generate blueprint:
+            if context.scene.selection2bom_in_include_blueprints:
+                if bpy.types.Scene.blueprint_settings:
+                #    bpy.types.Scene.blueprint_settings.filelink = blueprint_filelink
+                    blueprint_filelink_relative = build_blueprint_filelink(filelink, bom_entry, volume)
+                    # Using the filelink relative to the open .blend file.
+                    root = bpy.path.abspath('//')
+                    blueprint_filelink = root + blueprint_filelink_relative 
+                    print("blueprint filelink previous: ", context.scene.blueprint_settings.filelink)
+                    filepath_old = context.scene.render.filepath
+                    context.scene.render.filepath = blueprint_filelink
+                    bpy.ops.scene.blueprint_filelink_set()
+                    context.scene.render.filepath = filepath_old
+                    print("blueprint filelink new: ", context.scene.blueprint_settings.filelink, " <- object: ", resulting_o, " type: ", resulting_o.type)
+                    generate_engineering_drawing(context, resulting_o)
+                else:
+                    print("Error: Blender extension 'selection to blueprint' not installed or activated.")
+        # Follow-up encounter of this postprocessed/volume variant of the entry:
+        else:
+            bom_entry_variant_map[bom_entry][volume] += 1
+    
+    # Resulting object no longer is required as volume is calculated and the engineering drawings are generated too.
+    # TIDY UP:
+    # Delete the join target if it is not the object that has to be resolved itself, which must be handled by the calling function that gave this object as a parameter to this function.
+    if resulting_o != o:
+        # delete it:
+        bpy.ops.object.select_all(action='DESELECT')
+        # still valid?
+        if resulting_o:
+            resulting_o.select = True
+            print("deleting resulting_o after volume and blueprint calculations: ", resulting_o)
+            bpy.ops.object.delete()
+        
+    
+        
 
     # Keep track of how many BoM entries of same type have been found.
     count_map = bom_entry_count_map
@@ -659,7 +722,6 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
     if (context.scene.selection2bom_in_mode == '2'):
         # In hybrid mode the assemblies are listed separately.
         # Should not occur in the global parts lists if they are not atomar.
-        ## If they are atomar, then the part needs to be listed in both the assembly and the global part lists.
         if debug:
             print('==========> dupli_group: ', o.dupli_group)
         if (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
@@ -677,32 +739,33 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
 
     # Have to add assembly entry?
     owning_group_instance_objects_length = len(owning_group_instance_objects)
-    if bom_entry.find("Sheet_Bucket_Side_Bolted"):
-        print(owning_group_instance_objects_length)
         
     if (owning_group_instance_objects_length > 0):
     #for i in range(owning_group_instance_objects_length - 1, -1):
         # Important Note: The last item of the list could be spliced out! It's not done for performance. It's tested if for equality and skipped instead - in build_bom_entry().
+        # Nevertheless if only one item is contained and it is the object itself, then a call to build_bom_entry() must be avoided because it else increments the variant count and thus also initiates the generation of another engineering drawing.
         parent_group_instance = None
-        if (owning_group_instance_objects_length > 0):
-            parent_group_instance = owning_group_instance_objects[owning_group_instance_objects_length - 1]
-        if debug:
-            print('Assembly: Building bom entry ...')
-        assembly_bom_entry = build_bom_entry(context, parent_group_instance, owning_group_instance_objects, filelink=filelink) #TODO store owning_group_instance_objects and iterate bottom up.
-        # Keep track of how many BoM entries of the same type belong to this unique assembly:
-        if (not (assembly_bom_entry in assembly_bom_entry_count_map)):
+        #if (owning_group_instance_objects_length > 0):
+        parent_group_instance = owning_group_instance_objects[owning_group_instance_objects_length - 1]
+        # Makes no sense to increment bom entry of an assembly if the assembly is the bom entry itself: 
+        if owning_group_instance_objects_length > 1 or parent_group_instance != o:
             if debug:
-                print('Assembly: From now on keeping track of assembly: ', assembly_bom_entry)
-            assembly_bom_entry_count_map[assembly_bom_entry] = {}
-            
-        if (not (bom_entry in assembly_bom_entry_count_map[assembly_bom_entry])):
+                print('Assembly: Building bom entry ...')
+            assembly_bom_entry = build_bom_entry(context, parent_group_instance, owning_group_instance_objects, filelink=filelink) #TODO store owning_group_instance_objects and iterate bottom up.
+            # Keep track of how many BoM entries of the same type belong to this unique assembly:
+            if (not (assembly_bom_entry in assembly_bom_entry_count_map)):
+                if debug:
+                    print('Assembly: From now on keeping track of assembly: ', assembly_bom_entry)
+                assembly_bom_entry_count_map[assembly_bom_entry] = {}
+                
+            if (not (bom_entry in assembly_bom_entry_count_map[assembly_bom_entry])):
+                if debug:
+                    print('Assembly: From now on keeping track of bom_entry count of ', bom_entry)
+                assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = 0
+        
+            assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] += 1
             if debug:
-                print('Assembly: From now on keeping track of bom_entry count of ', bom_entry)
-            assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = 0
-    
-        assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] += 1
-        if debug:
-            print('Assembly:', assembly_bom_entry, ' -> new part count: ', assembly_bom_entry_count_map[assembly_bom_entry][bom_entry], 'x ', bom_entry)
+                print('Assembly:', assembly_bom_entry, ' -> new part count: ', assembly_bom_entry_count_map[assembly_bom_entry][bom_entry], 'x ', bom_entry)
     
     print('----*done*,constructed and stored global Bill of materials and Assembly listing entries.')
     return bom_entry
@@ -747,7 +810,7 @@ def deselect_all(context):
 #
 cache_resolved_dupli_group_dimensions_map = None
 cache_resolved_dupli_group_volume_map = None
-def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
+def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, delete_join_result_if_differs=True):
     if debug:
         print('build_bom_entry: o:', o, ' owning_group_instance_objects:', owning_group_instance_objects)
     #build BoM entry: using http://www.blender.org/documentation/blender_python_api_2_69_release/bpy.types.Object.html
@@ -767,6 +830,10 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
                     found_material_within_group_objects = True
                     material = getBaseName(group_object.active_material.name)
                     break#leave the loop as we have achieved our goal
+                #else:
+                #    found_material_within_group_objects = True
+                #    material = group_object.material_slots[0].material.name
+                    
             if (debug and not found_material_within_group_objects):
                 print('Found no next best material within the attached group object members: ', o.dupli_group.objects)
     else:
@@ -817,8 +884,8 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
     
     # Remove indicators:
     atomar_indicator = 'atom'
-    index = entry.find('' + atomar_indicator)
-    if (index != -1):
+    atomar_index = entry.find('' + atomar_indicator)
+    if (atomar_index != -1):
         entry = re.sub(PATTERN_ATOM, '', entry)
         #parts = entry.split(atomar_indicator)
         #parts_length = len(parts)
@@ -834,6 +901,16 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
     index = entry.find('' + indicator)
     if (index != -1):
         entry = re.sub(PATTERN_OPTIONAL, '', entry)
+    
+    # While optional and atomar indicator can be set per group instance object, the entry should be consistently using the dupli group name if available.
+    # Otherwise entry counts of assemblies may be 0, 
+    # if the group instance naming differs from the dupli group name.
+    if o.dupli_group and o.dupli_group.name:
+        if atomar_index != -1:
+            print("build_bom_entry(): Atomar assembly entry uses dupli group name: ", o.dupli_group.name)
+        else:
+            print("build_bom_entry(): Assembly entry uses dupli group name: ", o.dupli_group.name)
+        entry = getBaseName(o.dupli_group.name)
     
 
     #keep track of the longest material label
@@ -949,57 +1026,19 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None):
     #######
     # VOLUME VARIANTS (as independent additional information)
     #######
-    global cache_resolved_dupli_group_volume_map
+    #global cache_resolved_dupli_group_volume_map
     # Note: When generating the quantitieslist, the keys of the variant map are read
     #       to determine the volume variants. With the volume known, the filelink to
     #       the corresponding generated blueprint can be assembled and the count and
     #       images of the variants included in the BOM.
     volume_bounding_box = x * y * z
+    # NOTE The effort to calculate the real volume has been moved to the calling function because volume currently is not included in the bom entry directly. 
     
-    volume = -1
-    if o.dupli_group and o.dupli_group in cache_resolved_dupli_group_volume_map:
-        volume = cache_resolved_dupli_group_volume_map[o.dupli_group]
-        print("Using cached volume: ", volume)
-    elif resulting_o.type != 'EMPTY':
-        # Used for distinguishing variants, e.g. different post-processing like different holes, cuts, edges, ...
-        volume = calculate_volume(context, resulting_o)
-        volume = round(volume, context.scene.selection2bom_in_precision)
-        if o.dupli_group:# and len(o.dupli_group.objects) > 0:
-            cache_resolved_dupli_group_volume_map[o.dupli_group] = volume
-    else:
-        print("Neither dupli group to resolve nor supported object type for volume calculation for object: ", resulting_o, " type: ", resulting_o.type, " dupli group:", resulting_o.dupli_group)
-         
+    # NOTE The calling function is responsible for deleting the join result if the join result is still needed afterwards, which may not be intuitive, nevertheless currently is required due to technical reasons (namely allowing this function to be called for assembly entry generation without having it to generate engineering drawings, volume again and again).
+    if not delete_join_result_if_differs:
+        context.scene.objects.active = resulting_o
+        return bom_entry
     
-    # First encountered this entry?
-    if not (bom_entry in bom_entry_variant_map.keys()):
-        bom_entry_variant_map[bom_entry] = {}
-        if debug:
-            print('Keeping track of new variant/kind/post-processing of bom_entry ', bom_entry, ': volume: ', volume)
-            
-    if not (volume in bom_entry_variant_map[bom_entry].keys()):
-        bom_entry_variant_map[bom_entry][volume] = 1
-        # Generate blueprint:
-        if context.scene.selection2bom_in_include_blueprints:
-            if bpy.types.Scene.blueprint_settings:
-            #    bpy.types.Scene.blueprint_settings.filelink = blueprint_filelink
-                blueprint_filelink_relative = build_blueprint_filelink(filelink, entry, volume)
-                # Using the filelink relative to the open .blend file.
-                root = bpy.path.abspath('//')
-                blueprint_filelink = root + blueprint_filelink_relative 
-                print("blueprint filelink previous: ", context.scene.blueprint_settings.filelink)
-                filepath_old = context.scene.render.filepath
-                context.scene.render.filepath = blueprint_filelink
-                bpy.ops.scene.blueprint_filelink_set()
-                context.scene.render.filepath = filepath_old
-                print("blueprint filelink new: ", context.scene.blueprint_settings.filelink, " <- object: ", resulting_o)
-                generate_engineering_drawing(context, resulting_o)
-            else:
-                print("Error: Blender extension 'selection to blueprint' not installed or activated.")
-    # Follow-up encounter of this postprocessed/volume variant of the entry:
-    else:
-        bom_entry_variant_map[bom_entry][volume] += 1
-        
-        
     # TIDY UP:
     # Delete the join target if it is not the object that has to be resolved itself, which must be handled by the calling function that gave this object as a parameter to this function.
     if resulting_o != o:
@@ -1170,14 +1209,19 @@ def resolve_and_join(context, o, objects_to_be_joined=[], objects_to_be_deleted=
 
 
 def generate_engineering_drawing(context, obj):
+    print("-Generate engineering drawing. obj: ", obj)
+    global execution_round
+    execution_round += 1
+    #if execution_round > execution_round_max:
+    #    raise Error
     active_old = context.scene.objects.active
     bpy.ops.object.select_all(action='DESELECT')
-    
+        
     context.scene.objects.active = obj
     obj_select = obj.select
     obj.select = True
-    print("active old: ", active_old, " obj: ", obj, " select: ", obj.select)
-    print("selected_objects: ", context.selected_objects)
+    #print("active old: ", active_old, " obj: ", obj, " select: ", obj.select)
+    #print("selected_objects: ", context.selected_objects)
     context.scene.objects.active.select = True
     bpy.ops.object.mode_set(mode='OBJECT')
     # Invoke operator of selection2blueprint addon:
@@ -1186,8 +1230,11 @@ def generate_engineering_drawing(context, obj):
     
     # restore active object:
     context.scene.objects.active = active_old
+    
+    print(execution_round, " x generate engineering drawing for BoM finished")
 
-
+execution_round = 0
+execution_round_max = 2
 
 #
 # NOTE Please give the obj parameter as duplicate object because
@@ -1213,15 +1260,15 @@ def apply_modifiers(context, obj):
         m = obj.modifiers[modifiers_index]
         print('Applying modifier: ', m)
         if hasattr(m, "object"):
-            print(' object: ', m.object)
+            #print(' object: ', m.object)
             object_to_layers_to_restore_map[m.object] = m.object.layers # Copying should not be required, because the object still exists at the memory address and no matter if the memory where the layers variable is pointing to is changed, the map value still bears the old memory address, which thus stays in memory. Copying would just add clutter which had to be garbage collected.
             m.object.layers = obj.layers#<- not copying because the pointer is overridden immediately again, which prevents unintentional side effects which'd be major reason for copying. list(obj.layers)
             #for l_i in range(0, len(m.object.layers)):
             #    m.object.layers[l_i] = True
             #NOT CERTAIN THAT THIS OBJECT HAS BEEN ADDED, ONLY SCRIPT-ADDED THINGS ARE REMOVED AGAIN. if m.object.type == 'MESH':
             #    objects_to_be_deleted.append(object_for_intersection)
-        if hasattr(m, "operation"):
-            print(' operation: ', m.operation)
+        #if hasattr(m, "operation"):
+        #    print(' operation: ', m.operation)
         bpy.ops.object.modifier_apply(apply_as='DATA',modifier=m.name)
         #modifiers_index += 1 <- because the others are shifted upwards.
         modifier_count -= 1
@@ -1277,7 +1324,7 @@ def calculate_volume(context, obj):
             sign = -1
         elif f.normal[2] > 0:
             sign = 1
-        print("sign: ", sign, " dV: ", dV, " f.normal: ", f.normal)
+        #print("sign: ", sign, " dV: ", dV, " f.normal: ", f.normal)
         volume += sign * dV
         
     print("*done* Volume: ", volume)
@@ -1344,8 +1391,8 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     o_duplicate = context.scene.objects.active
    
     # If the objects are duplicated, then they still are in the same groups as the original object. This means the dupli_group suddenly has more members, which leads to endless recursion. Thus remove the duplicates from all groups:
-    if debug:
-        print('Removing selected objects from all groups. ', context.selected_objects)
+    #if debug:
+    #    print('Removing selected objects from all groups. ', context.selected_objects)
     #for selected_duplicate in context.selected_objects:
     #    for d_group in selected_duplicate.users_group:
     #        bpy.ops.group.objects_remove(group=d_group)
