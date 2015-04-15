@@ -958,21 +958,19 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         y = context.active_object.dimensions[1]
         z = context.active_object.dimensions[2]
         cache_resolved_dupli_group_dimensions_map[o.dupli_group] = resulting_o.dimensions.copy()  # <-- Can't store the reference as this object is just temporary. Might require recheck of validity, though such invalidation while executing the selection2bom script is impossible in blender as of now (check revision time) because the objects can't be manipulated while the operator (addon) is executing.
-         
-    # Because the dimensions include the scale if it's not an empty. Thus both when the dupli group is resolved and when its dimension is read from the cache - then the group instance's scale needs to be applied:
-    if o.dupli_group:
-        # Apply scale of this (empty) object as it might be scaled itself:
-        x *= o.scale[0]
-        y *= o.scale[1]
-        z *= o.scale[2]
-        x *= o.delta_scale[0]
-        y *= o.delta_scale[1]
-        z *= o.delta_scale[2]
-       
-        ##Undo now no longer required (copy instead of selected_object reference for recursion used now)
-        #while --undo_count > 0:
-        #    bpy.ops.ed.undo()
     #else: # no dupli group.
+         
+         
+    # Duplicates_make_real already makes the resulting objects inherit the scale! If that ever changes, then enable the following commented lines that then would be required for group instances/empties only, because the dimensions of mesh and curve objects already include the scale. Thus both when the dupli group is resolved and when its dimension is read from the cache - then the group instance's scale needs to be applied (if duplicates_make_real operator functionality no longer takes scale into account):
+    #if o.dupli_group:
+    #    # Apply scale of this (empty) object as it might be scaled itself:
+    #    x *= o.scale[0]
+    #    y *= o.scale[1]
+    #    z *= o.scale[2]
+    #    x *= o.delta_scale[0]
+    #    y *= o.delta_scale[1]
+    #    z *= o.delta_scale[2]
+       
     
     
     # Apply inherited delta transforms:    
