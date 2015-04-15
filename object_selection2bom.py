@@ -959,7 +959,8 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         z = context.active_object.dimensions[2]
         cache_resolved_dupli_group_dimensions_map[o.dupli_group] = resulting_o.dimensions.copy()  # <-- Can't store the reference as this object is just temporary. Might require recheck of validity, though such invalidation while executing the selection2bom script is impossible in blender as of now (check revision time) because the objects can't be manipulated while the operator (addon) is executing.
          
-         
+    # Because the dimensions include the scale if it's not an empty. Thus both when the dupli group is resolved and when its dimension is read from the cache - then the group instance's scale needs to be applied:
+    if o.dupli_group:
         # Apply scale of this (empty) object as it might be scaled itself:
         x *= o.scale[0]
         y *= o.scale[1]
