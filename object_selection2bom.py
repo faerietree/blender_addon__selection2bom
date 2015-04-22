@@ -817,27 +817,39 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     entry = getBaseName(o.name)
     
     index = -1
-    material = '-'
+    material = None
     if (o.active_material is None):
         if debug:
             print('Object ', o, ' has no active material.')
         if (not (o.dupli_group is None)):
             if debug:
                 print('It\'s a dupli group attached to this object. => This is a group instance. => Resolving material from its objects.')
-            found_material_within_group_objects = False
+            share_same_material = True
             for group_object in o.dupli_group.objects:
-                if (not (group_object.active_material is None)):
-                    found_material_within_group_objects = True
-                    material = getBaseName(group_object.active_material.name)
-                    break#leave the loop as we have achieved our goal
+                m = '-'
+                if group_object.type == 'EMPTY':
+                    continue
+                if group_object.active_material:
+                    m = getBaseName(group_object.active_material.name)
                 #else:
-                #    found_material_within_group_objects = True
-                #    material = group_object.material_slots[0].material.name
+                #    m = group_object.material_slots[0].material.name
+                
+                if material is None:
+                    material = m
+                else:
+                    # Already met a material before - no matter if it was '-'.
+                    if m != material:
+                        share_same_material = False
+                        material = 'MIXED'
+                        break # can not take over a material other than 'mixed'.
                     
-            if (debug and not found_material_within_group_objects):
-                print('Found no next best material within the attached group object members: ', o.dupli_group.objects)
+            if not share_same_material:
+                print('Found no material shared by all attached group object members: ', o.dupli_group.objects)
     else:
         material = getBaseName(o.active_material.name)    #default value
+        
+    if material is None:# or material == 'transparent': # <- HACK: Because the material is changed to 'transparent' by the blueprint extension and not had been ensured to be restored - which is fixed in revision .
+        material = '-'
         
     #look for a material explicitely specified:
     index = o.name.find('material:')
@@ -1013,6 +1025,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     #            operations_undone_count = operations_undone_count + 1
     #    if debug:
     #        print('operations_undone count: ', operations_undone_count)
+        
     bom_entry = entry + '___' + material + '___[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']___'
     if (is_optional):
         bom_entry = bom_entry + '1'
@@ -1331,7 +1344,7 @@ def calculate_volume(context, obj):
     delete_objects(context, objects_to_be_deleted)
     
     context.scene.objects.active = active_old
-    return volume
+    return abs(volume)
 
 
 def delete_objects(context, objects_to_be_deleted, exceptions=[]):
@@ -1468,7 +1481,7 @@ def getCharInstances(char, count):
 #
 #
 #
-def processEntry(entry):
+def processEntry(entry, column_separator=""):
     entry_parts = entry.split('___')
     label = entry_parts[0]
     material = entry_parts[1]
@@ -1485,7 +1498,7 @@ def processEntry(entry):
     if (is_optional):
         pre = ''#PREPEND_IF_OPTIONAL
         post = APPEND_IF_OPTIONAL
-    entryProcessed = '\t' + pre + label + getWhiteSpace(whitespace_count) + '\t' + material + getWhiteSpace(material_whitespace_count) + '\t' + dimensions + post;
+    entryProcessed = '\t' + pre + label + getWhiteSpace(whitespace_count) + '\t' + column_separator + material + getWhiteSpace(material_whitespace_count) + '\t' + column_separator + dimensions + post;
     #entryProcessed_len = len(entryProcessed)
     
     return entryProcessed
@@ -1515,10 +1528,55 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
         #f.read()
         #f.readhline()
         
-        bom = getWhiteSpace(entry_count_highest_digit_count) + '#  \tLabel' + getWhiteSpace(object_longest_label_len - 5) + '\tMaterial ' + getWhiteSpace(material_longest_label_len - 8) + '\tDimensions'
+        # HTML / Markdown additions:
+        table_begin = ""
+        
+        header_begin = ""
+        header_row_begin = ""
+        header_column_separator = ""
+        header_row_end = ""
+        header_end = ""
+        
+        body_begin = ""
+        row_begin = ""
+        column_separator = ""
+        column_separator_colspan_remainder = ""
+        row_end = ""
+        row_empty = ""
+        body_end = ""
+        
+        table_end = ""
+        if (context.scene.selection2bom_in_include_blueprints):
+            # Add html markup per entry: <tr><td></td></tr> or <td colspan="3"></td> if blueprint/image row.
+            table_begin = "<table>"
+        
+            header_begin = "<thead>"
+            header_row_begin = "<tr><th>"
+            header_column_separator = "</th><th>"
+            header_row_end = "</th></tr>"
+            header_end = "</thead>"
+        
+            body_begin = "<tbody>"
+            row_begin = "<tr><td>"
+            column_separator = "</td><td>"
+            column_separator_colspan_remainder = '</td><td colspan="3">'
+            row_end = "</td></tr>"
+            row_empty = '<tr><td colspan="4"></td></tr>'
+            body_end = "</tbody>"
+        
+            table_end = "</table>"
+        
+        bom = table_begin
+        bom += header_begin
+        bom += header_row_begin + getWhiteSpace(entry_count_highest_digit_count) + '#  \t' + header_column_separator + 'Label' + getWhiteSpace(object_longest_label_len - 5) + '\t' + header_column_separator + 'Material ' + getWhiteSpace(material_longest_label_len - 8) + '\t' + header_column_separator + 'Dimensions' + header_row_end
+        if not context.scene.selection2bom_in_include_blueprints:
+            bom = bom + '\r\n'
+            bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-  \t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t----------'
         bom = bom + '\r\n'
-        bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-  \t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t----------'
-        bom = bom + '\r\n'
+        bom += header_end
+        
+        bom += body_begin
+        bom += row_empty
         # Total part (counts):
         for entry, entry_count in bom_entry_count_map.items(): 
             pre = ''
@@ -1526,13 +1584,14 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
                 pre = PREPEND_IF_OPTIONAL
             digit_count = len(str(entry_count) + pre)
             whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
-            bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) +  str(entry_count) + 'x ' + processEntry(entry)
+            bom = bom + '\r\n' + row_begin + pre + getWhiteSpace(whitespace_count) + str(entry_count) + 'x ' + column_separator + processEntry(entry, column_separator)
+            bom += row_end
             
             # Include extra information line?
             if context.scene.selection2bom_in_include_info_line:
                 if entry in bom_entry_info_map:
-                    entry_information = '\r\n' + getWhiteSpace(entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) + len('x ')) + '\t' + bom_entry_info_map[entry]
-                    bom = bom + entry_information
+                    entry_information = '\r\n' + row_begin + getWhiteSpace(entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) + len('x ')) + '\t' + column_separator_colspan_remainder + bom_entry_info_map[entry]
+                    bom = bom + entry_information + row_end
                     #price_and_annotation = '\t' + getCharInstances('_', (entry_count_highest_digit_count + 2 + object_longest_label_len + material_longest_label_len)) #+ object_longest_dimension_string_length
                 else:
                     if debug:
@@ -1544,17 +1603,19 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
                     for variant_volume, variant_count in bom_entry_variant_map[entry].items():
                         blueprint_filelink = build_blueprint_filelink(filelink, entry, variant_volume)
                         blueprint = '<img src="'+ blueprint_filelink +'" title="Volume: ' + str(variant_volume) + '" alt="blueprint"/>' 
-                        head = '\r\n' + getWhiteSpace(entry_count_highest_digit_count - len(str(variant_count)) + len(PREPEND_IF_OPTIONAL)) + str(variant_count) + 'x \t' + blueprint #+ variant_volume
+                        head = '\r\n' + row_begin + getWhiteSpace(entry_count_highest_digit_count - len(str(variant_count)) + len(PREPEND_IF_OPTIONAL)) + str(variant_count) + 'x \t' + column_separator_colspan_remainder + blueprint #+ variant_volume
                         #body = '\r\n' + getWhiteSpace(entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) + len('x ')) + '\t' + blueprint
-                        bom = bom + head
+                        bom = bom + head + row_end
                 else:
                     if debug:
                         print('No variants for entry: ', entry)
                 
                 
-            bom = bom + '\r\n'
+            bom = bom + '\r\n' + row_empty # <- Some space for clearly structuring by which entries belong together.
         #bom = bom + '\r\n'
-            
+        bom += body_end
+        
+        bom += body_begin
         # Assemblies (including count):
         if (context.scene.selection2bom_in_mode == '2'):
             bom = bom + '\r\n\r\n\r\n======= ASSEMBLIES: ======'
@@ -1574,8 +1635,9 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
                 assembly_count = assembly_count_map[assembly]
                 digit_count = len(str(assembly_count) + pre)
                 whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
-                bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) + str(assembly_count) + 'x ' + processEntry(assembly) + ':'
-                
+                bom = bom + '\r\n' + row_begin + pre + getWhiteSpace(whitespace_count) + str(assembly_count) + 'x ' + column_separator + processEntry(assembly, column_separator) + ':'
+                bom += row_end
+
                 bom = bom + '\r\n-------'
                 for entry, entry_count in entry_count_map.items(): 
                     pre = ''
@@ -1585,11 +1647,13 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
                     print(count_string, " = entry_count: ", entry_count, " / assembly_count: ", assembly_count)
                     digit_count = len(count_string + pre)
                     whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
-                    bom = bom + '\r\n' + pre + getWhiteSpace(whitespace_count) + count_string + 'x ' + processEntry(entry)
+                    bom = bom + '\r\n' + row_begin + pre + getWhiteSpace(whitespace_count) + count_string + 'x ' + column_separator + processEntry(entry, column_separator)
+                    bom += row_end
                     #bom = bom '\r\n'
                     
-                bom = bom + '\r\n--------------\r\n\r\n'
+                bom = bom + '\r\n' + row_begin + '--------------\r\n\r\n' + column_separator_colspan_remainder + '' + row_end
                   
+        bom += body_end
             
             
         result = f.write(bom)
