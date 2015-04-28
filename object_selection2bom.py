@@ -989,17 +989,35 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     owning_group_instance_objects_length = len(owning_group_instance_objects)
     owning_group_instance_objects_index = owning_group_instance_objects_length - 1
     is_optional = False
+    # The rotation is no longer cancelled out, thus the inverted matrices must be chained/multiplied:
+    rotation_matrix = o.matrix_basis.to_3x3()#Matrix([1, 0, 0], [0, 1, 0], [0, 0, 1])
     while owning_group_instance_objects_index > -1:
         #print('index: ', owning_group_instance_objects_index, ' of length ', owning_group_instance_objects_length)
         owning_group_instance_object = owning_group_instance_objects[owning_group_instance_objects_index]
         # The object o itself might reside at the last position in the list, for performance reasons it was not removed. So skip it:
         if (owning_group_instance_object != o):
-            x *= owning_group_instance_object.scale[0]
-            y *= owning_group_instance_object.scale[1]
-            z *= owning_group_instance_object.scale[2]
-            x *= owning_group_instance_object.delta_scale[0]
-            y *= owning_group_instance_object.delta_scale[1]
-            z *= owning_group_instance_object.delta_scale[2]
+            # The object itself or any of the previous owning group instance objects may be rotated, so either this rotation must be cleared or the rotation must be taken into account:
+            
+            # Rotate back, i.e. invert the rotation:
+            # NOTE Either left or right multiplication is chosen randomly here.
+            ogio_scale = rotation_matrix * owning_group_instance_object.scale
+            ogio_delta_scale = rotation_matrix * owning_group_instance_object.delta_scale
+            
+            #owning_group_instance_object.rotation_euler = ogio_rotation_euler_to_restore
+            
+            # Print results:
+            print('object scale: ', owning_group_instance_object.scale, ' -> rotation inverted scale: ', ogio_scale)
+            print('object delta_scale: ', owning_group_instance_object.delta_scale, ' -> rotation inverted scale: ', ogio_delta_scale)
+            
+            x *= ogio_scale[0]
+            y *= ogio_scale[1]
+            z *= ogio_scale[2]
+            x *= ogio_delta_scale[0]
+            y *= ogio_delta_scale[1]
+            z *= ogio_delta_scale[2]
+            
+            rotation_matrix *= owning_group_instance_object.matrix_basis.to_3x3()
+            
            
         if (is_object_optional(owning_group_instance_object)):
             is_optional = True
