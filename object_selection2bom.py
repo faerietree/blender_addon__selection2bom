@@ -1035,7 +1035,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     # NOTE In blender, the scale is stored in the rotation matrix. Each rotation vector/column usually has amount/length of 1, i.e. is normalized. The difference is the scale. => The amount of a rotation vector is the scale along this (local/object frame) axis.
     # What is needed though is the bare rotation matrix, i.e. the one made of normalized vectors. This means the scale must be canceled:
     # Note it is assumed the to_3x3() not uses a reference to the original matrix, else it could lead to problems because the normalize_matrix_3x3() function operates directly on the given matrix.
-    rotation_matrix = None
+    rotation_matrix = None # <- The matrix that transforms the world frame scale vector into the local frame (to be compatible with the object's scale which also is in this frame and this is the object that inherits the owning group instance objects' scale which makes the transformation necessary).
     rotation_matrix = o.matrix_basis.to_3x3()#Matrix([1, 0, 0], [0, 1, 0], [0, 0, 1])
     normalize_matrix_3x3(rotation_matrix)
     
@@ -1050,30 +1050,34 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             
             # Rotate back, i.e. invert the rotation:
             # NOTE Either left or right multiplication is chosen randomly here.
-            #rotation_matrix = basis_matrix.to_3x3()
-            ogio_scale = rotation_matrix * owning_group_instance_object.scale# * rotation_matrix
-            ogio_delta_scale = rotation_matrix * owning_group_instance_object.delta_scale# * rotation_matrix
+            ogio_rotation_matrix = owning_group_instance_object.matrix_basis.to_3x3()
+            rotation_matrix_inverted = ogio_rotation_matrix.inverted()
+            normalize_matrix_3x3(rotation_matrix_inverted)
+            ogio_scale_world_frame = rotation_matrix_inverted * owning_group_instance_object.scale# * rotation_matrix_inverted
+            ogio_delta_scale_world_frame = rotation_matrix_inverted * owning_group_instance_object.delta_scale# * rotation_matrix_inverted
             
             #owning_group_instance_object.rotation_euler = ogio_rotation_euler_to_restore
             
             # Print results:
-            print('object scale: ', owning_group_instance_object.scale, ' -> rotation inverted scale: ', ogio_scale)
-            print('object delta_scale: ', owning_group_instance_object.delta_scale, ' -> rotation inverted scale: ', ogio_delta_scale)
+            print('object scale: ', owning_group_instance_object.scale, ' -> rotation inverted scale: ', ogio_scale_world_frame)
+            print('object delta_scale: ', owning_group_instance_object.delta_scale, ' -> rotation inverted scale: ', ogio_delta_scale_world_frame)
             
+            #Not required because while the scale is local, the scale is not what is evaluated but the dimensions, which is a vector given in world reference frame. ogio_scale = rotation_matrix * ogio_scale_world_frame
+            ogio_scale = ogio_scale_world_frame
             if owning_group_instance_object.scale != [1,1,1]:
                 x *= abs(ogio_scale[0])
                 y *= abs(ogio_scale[1])
                 z *= abs(ogio_scale[2])
+                
+            #ogio_delta_scale = rotation_matrix * ogio_delta_scale_world_frame
+            ogio_delta_scale = ogio_delta_scale_world_frame
             if owning_group_instance_object.delta_scale != [1,1,1]:
                 x *= abs(ogio_delta_scale[0])
                 y *= abs(ogio_delta_scale[1])
                 z *= abs(ogio_delta_scale[2])
             
-            ogio_rotation_matrix = owning_group_instance_object.matrix_basis.to_3x3()
-            print(ogio_rotation_matrix)
-            normalize_matrix_3x3(ogio_rotation_matrix)
-            print(ogio_rotation_matrix)
-            rotation_matrix = ogio_rotation_matrix * rotation_matrix
+            #normalize_matrix_3x3(ogio_rotation_matrix)
+            #rotation_matrix = ogio_rotation_matrix * rotation_matrix
             #basis_matrix = owning_group_instance_object.matrix_basis * basis_matrix
             
             
