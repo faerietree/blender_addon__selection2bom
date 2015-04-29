@@ -91,6 +91,7 @@ import time
 from bpy.props import IntProperty, StringProperty, BoolProperty, EnumProperty
 
 
+from mathutils import Vector
 
 
 #------- GLOBALS --------------------------------------------------------------#
@@ -804,6 +805,46 @@ def deselect_all(context):
 
 
 
+def normalize_matrix_3x3(rotation_matrix):
+    # column 0:
+    rot_x = Vector([rotation_matrix[0][0], rotation_matrix[0][1], rotation_matrix[0][2]])
+    # column 1:
+    rot_y = Vector([rotation_matrix[1][0], rotation_matrix[1][1], rotation_matrix[1][2]])
+    # column 2:
+    rot_z = Vector([rotation_matrix[2][0], rotation_matrix[2][1], rotation_matrix[2][2]])
+    
+    # Extract the scale to allow to cancel it:
+    scale_x = rot_x.length
+    scale_y = rot_y.length
+    scale_z = rot_z.length
+    
+    # Or rather just normalize and reconstruct the (bare) rotation matrix:
+    #rotation_matrix = Matrix(rot_x.normalize(), rot_y.normalize(), rot_z.normalize())
+    rot_x_normalized = rot_x.normalize()
+    # May be normalized already (or amount/length is zero) which leads to None as result):
+    if not rot_x_normalized:
+        rot_x_normalized = rot_x
+    rot_y_normalized = rot_y.normalize()
+    if not rot_y_normalized:
+        rot_y_normalized = rot_y
+    rot_z_normalized = rot_z.normalize()
+    if not rot_z_normalized:
+        rot_z_normalized = rot_z
+    
+    rotation_matrix[0][0] = rot_x_normalized[0]
+    rotation_matrix[0][1] = rot_x_normalized[1]
+    rotation_matrix[0][2] = rot_x_normalized[2]
+    
+    rotation_matrix[1][0] = rot_y_normalized[0]
+    rotation_matrix[1][1] = rot_y_normalized[1]
+    rotation_matrix[1][2] = rot_y_normalized[2]
+    
+    rotation_matrix[2][0] = rot_z_normalized[0]
+    rotation_matrix[2][1] = rot_z_normalized[1]
+    rotation_matrix[2][2] = rot_z_normalized[2]
+
+
+
 #
 # Constructing an entry for the bill of materials,
 # i.e. figuring properties.
@@ -990,7 +1031,16 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     owning_group_instance_objects_index = owning_group_instance_objects_length - 1
     is_optional = False
     # The rotation is no longer cancelled out, thus the inverted matrices must be chained/multiplied:
+    
+    # NOTE In blender, the scale is stored in the rotation matrix. Each rotation vector/column usually has amount/length of 1, i.e. is normalized. The difference is the scale. => The amount of a rotation vector is the scale along this (local/object frame) axis.
+    # What is needed though is the bare rotation matrix, i.e. the one made of normalized vectors. This means the scale must be canceled:
+    # Note it is assumed the to_3x3() not uses a reference to the original matrix, else it could lead to problems because the normalize_matrix_3x3() function operates directly on the given matrix.
+    rotation_matrix = None
     rotation_matrix = o.matrix_basis.to_3x3()#Matrix([1, 0, 0], [0, 1, 0], [0, 0, 1])
+    normalize_matrix_3x3(rotation_matrix)
+    
+    # For non multiples of pi/2, i.e. 90degree:
+    #basis_matrix = Matrix(o.matrix_basis)#Matrix([1, 0, 0], [0, 1, 0], [0, 0, 1])
     while owning_group_instance_objects_index > -1:
         #print('index: ', owning_group_instance_objects_index, ' of length ', owning_group_instance_objects_length)
         owning_group_instance_object = owning_group_instance_objects[owning_group_instance_objects_index]
@@ -1000,8 +1050,9 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             
             # Rotate back, i.e. invert the rotation:
             # NOTE Either left or right multiplication is chosen randomly here.
-            ogio_scale = rotation_matrix * owning_group_instance_object.scale
-            ogio_delta_scale = rotation_matrix * owning_group_instance_object.delta_scale
+            #rotation_matrix = basis_matrix.to_3x3()
+            ogio_scale = rotation_matrix * owning_group_instance_object.scale# * rotation_matrix
+            ogio_delta_scale = rotation_matrix * owning_group_instance_object.delta_scale# * rotation_matrix
             
             #owning_group_instance_object.rotation_euler = ogio_rotation_euler_to_restore
             
@@ -1009,14 +1060,22 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             print('object scale: ', owning_group_instance_object.scale, ' -> rotation inverted scale: ', ogio_scale)
             print('object delta_scale: ', owning_group_instance_object.delta_scale, ' -> rotation inverted scale: ', ogio_delta_scale)
             
-            x *= ogio_scale[0]
-            y *= ogio_scale[1]
-            z *= ogio_scale[2]
-            x *= ogio_delta_scale[0]
-            y *= ogio_delta_scale[1]
-            z *= ogio_delta_scale[2]
+            if owning_group_instance_object.scale != [1,1,1]:
+                x *= abs(ogio_scale[0])
+                y *= abs(ogio_scale[1])
+                z *= abs(ogio_scale[2])
+            if owning_group_instance_object.delta_scale != [1,1,1]:
+                x *= abs(ogio_delta_scale[0])
+                y *= abs(ogio_delta_scale[1])
+                z *= abs(ogio_delta_scale[2])
             
-            rotation_matrix *= owning_group_instance_object.matrix_basis.to_3x3()
+            ogio_rotation_matrix = owning_group_instance_object.matrix_basis.to_3x3()
+            print(ogio_rotation_matrix)
+            normalize_matrix_3x3(ogio_rotation_matrix)
+            print(ogio_rotation_matrix)
+            rotation_matrix = ogio_rotation_matrix * rotation_matrix
+            #basis_matrix = owning_group_instance_object.matrix_basis * basis_matrix
+            
             
            
         if (is_object_optional(owning_group_instance_object)):
@@ -1912,8 +1971,14 @@ class OBJECT_OT_Selection2BOM(bpy.types.Operator):
     #def __init__(self):
     #=======METHODS============================================================#
     @classmethod
-    def poll(cls, context):#it's the same without self (always inserted before)
+    def poll(self, context):#it's the same without self (always inserted before)
         # check the context:
+        if not context.scene:
+            print("Wrong context: No scene.")
+            return False
+        if context.scene.selection2bom_in_include_blueprints and not hasattr(context.scene, "blueprint_settings"):
+            print("Wrong context: No blueprint settings, i.e. no engineering drawing functionality found.\r\nNote the blueprint addon is not provided because interest was low and support was basically non-existent. There is not enough done for a better world, the world is spiralling (once again) into war/cruelty (organized kidnapping of 10 to 16 years old girls!) and chaos.\r\nThe blueprint functionality has been created for non-profit overall world development aid (free, open automated machines/hardware) over the course of several months non-stop coding and testing. We want a world of magic, fantasy and harmony. We must step up our actions for a better overall world (neither egoism, nor group egoism e.g. my/our nation/belief/... is the only/the best/...).\r\nA solution/chance might be to increase base living standard globally and to encourage philosophical questioning.\r\nNote this bill of materials addon version that includes the blueprint functionality has several issues fixed, like wrong assembly hierarchy derived dimensions due to mismatched rotation (which is often is the case in engineering models that use assemblies).")
+            return False
         return True  # <-- context does not matter here
         # The following condition no longer is required as auto-detection of mechanical objects is supported.
         # Also the following is not compatible with the possibility to either select objects for the bom
