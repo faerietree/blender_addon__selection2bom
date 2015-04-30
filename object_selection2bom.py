@@ -1060,18 +1060,33 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             
             # Print results:
             print('object scale: ', owning_group_instance_object.scale, ' -> rotation inverted scale: ', ogio_scale_world_frame)
-            print('object delta_scale: ', owning_group_instance_object.delta_scale, ' -> rotation inverted scale: ', ogio_delta_scale_world_frame)
+            print('object delta_scale: ', owning_group_instance_object.delta_scale, ' -> rotation inverted delta scale: ', ogio_delta_scale_world_frame)
             
             #Not required because while the scale is local, the scale is not what is evaluated but the dimensions, which is a vector given in world reference frame. ogio_scale = rotation_matrix * ogio_scale_world_frame
-            ogio_scale = ogio_scale_world_frame
-            if owning_group_instance_object.scale != [1,1,1]:
+            #ogio_scale = ogio_scale_world_frame
+            
+            direction_x = Vector([1, 0, 0])
+            direction_y = Vector([0, 1, 0])
+            direction_z = Vector([0, 0, 1])
+            
+            ogio_scale_x = owning_group_instance_object.scale[0] * direction_x
+            ogio_scale_y = owning_group_instance_object.scale[1] * direction_y
+            ogio_scale_z = owning_group_instance_object.scale[2] * direction_z
+            
+            ogio_scale_x_world_frame = rotation_matrix_inverted * ogio_scale_x
+            ogio_scale_y_world_frame = rotation_matrix_inverted * ogio_scale_y
+            ogio_scale_z_world_frame = rotation_matrix_inverted * ogio_scale_z
+            
+            ogio_scale = ogio_scale_x_world_frame + ogio_scale_y_world_frame + ogio_scale_z_world_frame
+            print("ogio_scale = %s = scale_x_w + scale_y_w + scale_z_w = %s + %s + %s" % (ogio_scale, ogio_scale_x_world_frame, ogio_scale_y_world_frame, ogio_scale_z_world_frame))
+            if abs(owning_group_instance_object.scale[0]) != 1 or abs(owning_group_instance_object.scale[1]) != 1 or abs(owning_group_instance_object.scale[2]) != 1:
                 x *= abs(ogio_scale[0])
                 y *= abs(ogio_scale[1])
                 z *= abs(ogio_scale[2])
                 
             #ogio_delta_scale = rotation_matrix * ogio_delta_scale_world_frame
             ogio_delta_scale = ogio_delta_scale_world_frame
-            if owning_group_instance_object.delta_scale != [1,1,1]:
+            if abs(owning_group_instance_object.delta_scale[0]) != 1 or abs(owning_group_instance_object.delta_scale[1]) != 1 or abs(owning_group_instance_object.delta_scale[2]) != 1:
                 x *= abs(ogio_delta_scale[0])
                 y *= abs(ogio_delta_scale[1])
                 z *= abs(ogio_delta_scale[2])
