@@ -980,6 +980,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     # TODO don't take the absolute bounding_box dimensions - instead calculate from a hull of the object?
     
     #undo_count = 0 #now working with a copy of the initially selected_objects (no longer a live copy/reference)
+    # If empties not had the dimensions property, then it leads to an error because an empty does not have dimensions in general. TODO Are dimensions for empties just zero as of current blender?
     x = o.dimensions[0] # As it's in object context, the scale is taken into account in the bounding box already.
     y = o.dimensions[1]
     z = o.dimensions[2]
@@ -1036,8 +1037,9 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     # What is needed though is the bare rotation matrix, i.e. the one made of normalized vectors. This means the scale must be canceled:
     # Note it is assumed the to_3x3() not uses a reference to the original matrix, else it could lead to problems because the normalize_matrix_3x3() function operates directly on the given matrix.
     rotation_matrix = None # <- The matrix that transforms the world frame scale vector into the local frame (to be compatible with the object's scale which also is in this frame and this is the object that inherits the owning group instance objects' scale which makes the transformation necessary).
-    rotation_matrix = o.matrix_basis.to_3x3()#Matrix([1, 0, 0], [0, 1, 0], [0, 0, 1])
-    normalize_matrix_3x3(rotation_matrix)
+    rotation_matrix = o.matrix_basis.to_3x3()
+    
+    rotation_matrix_for_deriving_scale = Matrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     
     # For non multiples of pi/2, i.e. 90degree:
     #basis_matrix = Matrix(o.matrix_basis)#Matrix([1, 0, 0], [0, 1, 0], [0, 0, 1])
@@ -1047,10 +1049,9 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         # The object o itself might reside at the last position in the list, for performance reasons it was not removed. So skip it:
         if (owning_group_instance_object != o):
             # The object itself or any of the previous owning group instance objects may be rotated, so either this rotation must be cleared or the rotation must be taken into account:
-            
-            # Rotate back, i.e. invert the rotation:
-            # NOTE Either left or right multiplication is chosen randomly here.
             ogio_rotation_matrix = owning_group_instance_object.matrix_basis.to_3x3()
+            
+            # NOTE Either left or right multiplication is chosen randomly here.
             rotation_matrix_inverted = ogio_rotation_matrix.inverted()
             normalize_matrix_3x3(rotation_matrix_inverted)
             ogio_scale_world_frame = rotation_matrix_inverted * owning_group_instance_object.scale# * rotation_matrix_inverted
@@ -1079,30 +1080,87 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             
             ogio_scale = ogio_scale_x_world_frame + ogio_scale_y_world_frame + ogio_scale_z_world_frame
             print("ogio_scale = %s = scale_x_w + scale_y_w + scale_z_w = %s + %s + %s" % (ogio_scale, ogio_scale_x_world_frame, ogio_scale_y_world_frame, ogio_scale_z_world_frame))
-            if abs(owning_group_instance_object.scale[0]) != 1 or abs(owning_group_instance_object.scale[1]) != 1 or abs(owning_group_instance_object.scale[2]) != 1:
-                x *= abs(ogio_scale[0])
-                y *= abs(ogio_scale[1])
-                z *= abs(ogio_scale[2])
-                
-            #ogio_delta_scale = rotation_matrix * ogio_delta_scale_world_frame
-            ogio_delta_scale = ogio_delta_scale_world_frame
-            if abs(owning_group_instance_object.delta_scale[0]) != 1 or abs(owning_group_instance_object.delta_scale[1]) != 1 or abs(owning_group_instance_object.delta_scale[2]) != 1:
-                x *= abs(ogio_delta_scale[0])
-                y *= abs(ogio_delta_scale[1])
-                z *= abs(ogio_delta_scale[2])
             
             #normalize_matrix_3x3(ogio_rotation_matrix)
-            #rotation_matrix = ogio_rotation_matrix * rotation_matrix
-            #basis_matrix = owning_group_instance_object.matrix_basis * basis_matrix
+            # Note matrices are distributiv, i.e. the side from which the calculation is started, does not matter.
+            # Note matrices are commutative, i.e. the order of multiplication matters. Right multiplication because its reference is the mobile coordinate frame and the iteration direction is reverse, from lowest to highest owning group instance / parent:
+            #rotation_matrix_for_deriving_scale = rotation_matrix_for_deriving_scale * ogio_rotation_matrix
+            rotation_matrix_for_deriving_scale = ogio_rotation_matrix * rotation_matrix_for_deriving_scale
+            print("ogio: ", owning_group_instance_object, " overall scale so far: ", rotation_matrix_for_deriving_scale.to_scale())
             
             
-           
         if (is_object_optional(owning_group_instance_object)):
             is_optional = True
-          
+        
         owning_group_instance_objects_index -= 1
+    
+    normalize_matrix_3x3(rotation_matrix)
+    rotation_matrix_inverted = rotation_matrix.inverted()
+    scale = rotation_matrix_for_deriving_scale.to_scale()
+    print("Overall group instance objects' scale to inherit (global): ", scale)
+    # Right multiplication due to mobile/local frame (right multiplication) to finally get the scale in the object's local coordinate frame:
+    scale = (rotation_matrix_for_deriving_scale * rotation_matrix).to_scale()
+    print("Overall group instance objects' scale to inherit (local): ", scale)
+    # Derive delta dimensions because there is no to the coder known way to derive world coordinate frame dimension coordinates other than examining each vertex:
+    # NOTE This trick does not work for "empty" objects because there are no dimensions, thus then a dummy object must be set up:
+    object_for_calculating_dimensions = o
+    if o.type == 'EMPTY':
+        object_for_calculating_dimensions = resulting_o
+        
+        active_object_pre_calculating_dimensions = context.scene.objects.active
+        if not resulting_o or resulting_o == o:
+            bpy.ops.object.add_named(name="object_for_calculating_dimensions")
+            object_for_calculating_dimensions = context.scene.objects.active
+            # init with the cached assembly/dupli group overall dimensions (world frame):
+            object_for_calculating_dimensions.dimensions[0] = x
+            object_for_calculating_dimensions.dimensions[1] = y
+            object_for_calculating_dimensions.dimensions[2] = z
+            
+        # Applying the scale is not required in all cases because the scale is overridden. Scale is relative to the dimensions, it must be overridden if the reference dimensions shall take the scale into account. Here that is the case, therefore it is overriden for the resolved dupli group (because its scale may differ from 1 and yet its dimensions are valid and the reference) and the newly created object (because assigning to the dimensions property may indirectly change the object's scale):
+        # NOTE In both cases where the scale transformation is applied, the object is no longer needed, thus no restoration/cancelling of the then applied scale is performed.
+        selected_objects_pre_scale = list(context.selected_objects)
+        bpy.ops.object.select_all(action='DESELECT')
+        bpy.ops.object.transform_apply(scale = True)
+        # Restore previous state:
+        context.scene.objects.active = active_object_pre_calculating_dimensions
+        for selected_obj in selected_objects_pre_scale:
+            selected_obj.select = True
+            
+        
+    o_scale_old = object_for_calculating_dimensions.scale#Vector(o.scale)
+    o_dimensions_old = Vector(object_for_calculating_dimensions.dimensions)
+    object_for_calculating_dimensions.scale = scale
+    # Trigger a recalculation of the dimensions:
+    active_object_pre_scale = context.scene.objects.active
+    context.scene.objects.active = object_for_calculating_dimensions
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    context.scene.objects.active = active_object_pre_scale
+    # Determine overall dimensions:
+    # Becomes negative if scale was smaller than 1:
+    delta_x = object_for_calculating_dimensions.dimensions[0] - o_dimensions_old[0]
+    delta_y = object_for_calculating_dimensions.dimensions[1] - o_dimensions_old[1]
+    delta_z = object_for_calculating_dimensions.dimensions[2] - o_dimensions_old[2]
+    #x *= abs(scale[0])
+    #y *= abs(scale[1])
+    #z *= abs(scale[2])
+    x += delta_x
+    y += delta_y
+    z += delta_z
+    object_for_calculating_dimensions.scale = o_scale_old
+    
+    # Is the newly created temporary object?
+    if object_for_calculating_dimensions != resulting_o and object_for_calculating_dimensions != o:
+        delete_objects(context, objects=[object_for_calculating_dimensions])
 
-
+    # TODO Where is the delta scale stored in the blender object's transformation matrix, in the camera scale slots at the very bottom?
+    #delta_scale = rotation_matrix_for_deriving_scale.to_delta_scale()
+    #x *= abs(delta_scale[0])
+    #y *= abs(delta_scale[1])
+    #z *= abs(delta_scale[2])
+    
+    
     #determine units using the unit scale of the scene's unit/world settings
     dimensions = [
             getMeasureString(x, context.scene.unit_settings, context.scene.selection2bom_in_precision),
