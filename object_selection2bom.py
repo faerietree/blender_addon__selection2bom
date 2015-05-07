@@ -91,7 +91,7 @@ import time
 from bpy.props import IntProperty, StringProperty, BoolProperty, EnumProperty
 
 
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 
 #------- GLOBALS --------------------------------------------------------------#
@@ -1027,6 +1027,10 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
        
     
     
+    #if resulting_o.name == "Nut.012":
+    print("scale: ", resulting_o.scale, " dimensions: ", resulting_o.dimensions)
+    # TODO => Resolve scale, it's not included after make duplicates real python call?!!    
+        
     # Apply inherited delta transforms:    
     owning_group_instance_objects_length = len(owning_group_instance_objects)
     owning_group_instance_objects_index = owning_group_instance_objects_length - 1
@@ -1039,6 +1043,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     rotation_matrix = None # <- The matrix that transforms the world frame scale vector into the local frame (to be compatible with the object's scale which also is in this frame and this is the object that inherits the owning group instance objects' scale which makes the transformation necessary).
     rotation_matrix = o.matrix_basis.to_3x3()
     print("o: ", o, " o.scale: ", o.scale)
+    
     
     rotation_matrix_for_deriving_scale = Matrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     
@@ -1095,25 +1100,25 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         
         owning_group_instance_objects_index -= 1
     
-    if o.type != 'EMPTY': # because else the assembly scale will not be included. For MESH and CURVE objects the scale is included in the dimensions already, which is not the case for empties.
-        normalize_matrix_3x3(rotation_matrix)
-    #else:
-    # The inverse is still needed for the reverse rotation because the from resolving a group instance to its objects resulting joined object does not have the same transform, i.e. not the same local/mobile/object coordinate frame, therefore the scale is wrong and must be rotated (or alternatively the transformations must be copied to the object for calculating the dimensions via the scale trick, see a bit below):
     rotation_matrix_normalized = Matrix(rotation_matrix)
     normalize_matrix_3x3(rotation_matrix_normalized)
+    # The inverse is still needed for the reverse rotation because the from resolving a group instance to its objects resulting joined object does not have the same transform, i.e. not the same local/mobile/object coordinate frame, therefore the scale is wrong and must be rotated (or alternatively the transformations must be copied to the object for calculating the dimensions via the scale trick, see a bit below):
     rotation_matrix_normalized_inverted = rotation_matrix_normalized.inverted()
-    
-    scale = rotation_matrix_for_deriving_scale.to_scale()
-    # Apply the transformation, especially rotation and scale:
-    rotation_matrix_for_deriving_scale = rotation_matrix_for_deriving_scale * rotation_matrix
+    # Note the rotation matrix may be a reference (apparently it is) and thus normalizing it directly leads to cleared scale for non-empty objects, which is why a copy is used now.
+    if o.type != 'EMPTY': # because else the assembly scale will not be included. For MESH and CURVE objects the scale is included in the dimensions already, which is not the case for empties.
+        # Apply the transformation, especially rotation and scale:
+        rotation_matrix_for_deriving_scale = rotation_matrix_for_deriving_scale * rotation_matrix_normalized
+    else:
+        rotation_matrix_for_deriving_scale = rotation_matrix_for_deriving_scale * rotation_matrix
+        
     # Is resolved group instance/assembly?
     if resulting_o and resulting_o != o:
         # Revert the rotation but keep the scale:
-        scale = (rotation_matrix_for_deriving_scale * rotation_matrix_normalized_inverted).to_scale()
+        scale = Vector((rotation_matrix_for_deriving_scale * rotation_matrix_normalized_inverted).to_scale())
         print("Overall group instance objects' scale to inherit (global): ", scale)
     else:
         # Right multiplication due to mobile/local frame (right multiplication) to finally get the scale in the object's local coordinate frame:
-        scale = rotation_matrix_for_deriving_scale.to_scale()
+        scale = Vector(rotation_matrix_for_deriving_scale.to_scale())
         print("Overall group instance objects' scale to inherit (local): ", scale)
     # Derive delta dimensions because there is no to the coder known way to derive world coordinate frame dimension coordinates other than examining each vertex:
     # NOTE This trick does not work for "empty" objects because there are no dimensions, thus then a dummy object must be set up:
@@ -1126,30 +1131,36 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         active_object_pre_calculating_dimensions = context.scene.objects.active
         selected_objects_pre_scale = list(context.selected_objects)
         if not resulting_o or resulting_o == o:
-            bpy.ops.object.add_named(name="object_for_calculating_dimensions")
+            print("active before adding new: ", context.scene.objects.active)
+            #Object not found? bpy.ops.object.add_named(name="object_for_calculating_dimensions")
+            bpy.ops.object.add(type='MESH')
+            print("active after adding new: ", context.scene.objects.active)
             object_for_calculating_dimensions = context.scene.objects.active
             # synchronize rotation and other transformations because else the mobile/local frame will be different from the newly created object's mobile/local frame.
+            print("Matrix basis before: ", object_for_calculating_dimensions.matrix_basis)
             object_for_calculating_dimensions.matrix_basis = Matrix(o.matrix_basis)
+            print("Matrix basis after: ", object_for_calculating_dimensions.matrix_basis)
             # init with the cached assembly/dupli group overall dimensions (world frame):
             object_for_calculating_dimensions.dimensions[0] = x
             object_for_calculating_dimensions.dimensions[1] = y
             object_for_calculating_dimensions.dimensions[2] = z
             #objects_to_be_deleted.append(object_for_calculating_dimensions)
             
-        # Prevent the scale of the original object to be applied, because its scale is still needed.
+        # Prevent the scale of the original object to be applied, because its scale is still needed. Only apply scale transform if not resolved:
         if not resulting_o or resulting_o != o:
            # Applying the scale is not required in all cases because the scale is overridden. Scale is relative to the dimensions, it must be overridden if the reference dimensions shall take the scale into account. Here that is the case, therefore it is overriden for the resolved dupli group (because its scale may differ from 1 and yet its dimensions are valid and the reference) and the newly created object (because assigning to the dimensions property may indirectly change the object's scale):
             # NOTE In both cases where the scale transformation is applied, the object (or the scale thereof) is no longer needed, thus no restoration/cancelling of the then applied scale is performed.
             bpy.ops.object.select_all(action='DESELECT')
+            # Operate on the active object only.
             bpy.ops.object.transform_apply(scale = True)
+            for selected_obj in selected_objects_pre_scale:
+                selected_obj.select = True
         
         # Restore previous state:
         context.scene.objects.active = active_object_pre_calculating_dimensions
-        for selected_obj in selected_objects_pre_scale:
-            selected_obj.select = True
             
         
-    o_scale_old = object_for_calculating_dimensions.scale#Vector(o.scale)
+    o_scale_old = Vector(object_for_calculating_dimensions.scale)#Vector(o.scale)
     o_dimensions_old = Vector(object_for_calculating_dimensions.dimensions)
     object_for_calculating_dimensions.scale = scale
     # Trigger a recalculation of the dimensions:
@@ -1160,10 +1171,11 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     bpy.ops.object.mode_set(mode='OBJECT')
     context.scene.objects.active = active_object_pre_scale
     # Determine overall dimensions:
-    # Becomes negative if scale was smaller than 1:
+    # Becomes negative if scale has been smaller than 1:
     delta_x = object_for_calculating_dimensions.dimensions[0] - o_dimensions_old[0]
     delta_y = object_for_calculating_dimensions.dimensions[1] - o_dimensions_old[1]
     delta_z = object_for_calculating_dimensions.dimensions[2] - o_dimensions_old[2]
+    print("object_for_calculating_dimensions: ", object_for_calculating_dimensions, " => delta: ", delta_x, delta_y, delta_z)
     #x *= abs(scale[0])
     #y *= abs(scale[1])
     #z *= abs(scale[2])
@@ -1174,7 +1186,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     
     # Is the newly created temporary object?
     if object_for_calculating_dimensions and object_for_calculating_dimensions != resulting_o and object_for_calculating_dimensions != o:
-        delete_objects(context, objects=[object_for_calculating_dimensions])
+        delete_objects(context, [object_for_calculating_dimensions])
 
     # TODO Where is the delta scale stored in the blender object's transformation matrix, in the camera scale slots at the very bottom?
     #delta_scale = rotation_matrix_for_deriving_scale.to_delta_scale()
