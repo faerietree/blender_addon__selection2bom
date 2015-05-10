@@ -1054,6 +1054,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         owning_group_instance_object = owning_group_instance_objects[owning_group_instance_objects_index]
         # The object o itself might reside at the last position in the list, for performance reasons it was not removed. So skip it:
         if (owning_group_instance_object != o):
+            print("Owning group instance is != o.")
             # The object itself or any of the previous owning group instance objects may be rotated, so either this rotation must be cleared or the rotation must be taken into account:
             ogio_rotation_matrix = owning_group_instance_object.matrix_basis.to_3x3()
             
@@ -1114,22 +1115,22 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     # Is resolved group instance/assembly?
     if resulting_o and resulting_o != o:
         # Revert the rotation but keep the scale:
-        scale = Vector((rotation_matrix_for_deriving_scale * rotation_matrix_normalized_inverted).to_scale())
+        scale = (rotation_matrix_for_deriving_scale * rotation_matrix_normalized_inverted).to_scale()
         print("Overall group instance objects' scale to inherit (global): ", scale)
     else:
         # Right multiplication due to mobile/local frame (right multiplication) to finally get the scale in the object's local coordinate frame:
-        scale = Vector(rotation_matrix_for_deriving_scale.to_scale())
+        scale = rotation_matrix_for_deriving_scale.to_scale()
         print("Overall group instance objects' scale to inherit (local): ", scale)
     # Derive delta dimensions because there is no to the coder known way to derive world coordinate frame dimension coordinates other than examining each vertex:
     # NOTE This trick does not work for "empty" objects because there are no dimensions, thus then a dummy object must be set up:
     object_for_calculating_dimensions = o
     #objects_to_be_deleted = []
+    # Store state:
+    active_object_pre_calculating_dimensions = context.scene.objects.active
+    selected_objects_pre_scale = list(context.selected_objects)
     if o.type == 'EMPTY':
         object_for_calculating_dimensions = resulting_o
         
-        # Store state:
-        active_object_pre_calculating_dimensions = context.scene.objects.active
-        selected_objects_pre_scale = list(context.selected_objects)
         if not resulting_o or resulting_o == o:
             print("active before adding new: ", context.scene.objects.active)
             #Object not found? bpy.ops.object.add_named(name="object_for_calculating_dimensions")
@@ -1146,21 +1147,29 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             object_for_calculating_dimensions.dimensions[2] = z
             #objects_to_be_deleted.append(object_for_calculating_dimensions)
             
-        # Prevent the scale of the original object to be applied, because its scale is still needed. Only apply scale transform if not resolved:
-        if not resulting_o or resulting_o != o:
-           # Applying the scale is not required in all cases because the scale is overridden. Scale is relative to the dimensions, it must be overridden if the reference dimensions shall take the scale into account. Here that is the case, therefore it is overriden for the resolved dupli group (because its scale may differ from 1 and yet its dimensions are valid and the reference) and the newly created object (because assigning to the dimensions property may indirectly change the object's scale):
-            # NOTE In both cases where the scale transformation is applied, the object (or the scale thereof) is no longer needed, thus no restoration/cancelling of the then applied scale is performed.
-            bpy.ops.object.select_all(action='DESELECT')
-            # Operate on the active object only.
-            bpy.ops.object.transform_apply(scale = True)
-            for selected_obj in selected_objects_pre_scale:
-                selected_obj.select = True
-        
-        # Restore previous state:
-        context.scene.objects.active = active_object_pre_calculating_dimensions
+    ## Even the scale of the original object must be applied, because its scale must be assumed as 1 because the determined owning group instances' scale is relative to the child object, and this means the scale needs be chained - which is difficult to do without matrices, thus temporarily apply the scale to make it appear as if it'd not be scaled at all.
+    #if not resulting_o or resulting_o != o:
+    # Applying the scale is not required in all cases because the scale is overridden. Scale is relative to the dimensions, it must be overridden if the reference dimensions shall take the scale into account. Here that is the case, therefore it is overriden for the resolved dupli group (because its scale may differ from 1 and yet its dimensions are valid and the reference) and the newly created object (because assigning to the dimensions property may indirectly change the object's scale):
+        ## NOTE In both cases where the scale transformation is applied, the object (or the scale thereof) is no longer needed, thus no restoration/cancelling of the then applied scale is performed.
+    # Operate on the active object only, i.e. to be sure deselect all first:
+    bpy.ops.object.select_all(action='DESELECT')
+    context.scene.objects.active = object_for_calculating_dimensions
+    context.scene.objects.active.select = True
+    bpy.ops.object.transform_apply(scale = True)
+    
+    # Restore previous state:
+    for selected_obj in selected_objects_pre_scale:
+        selected_obj.select = True
+    context.scene.objects.active = active_object_pre_calculating_dimensions
             
         
     o_scale_old = Vector(object_for_calculating_dimensions.scale)#Vector(o.scale)
+    ## Reset to 1 because the dimensions are relative. NOTE The scale is relative to the leaf object! This means the scale must be assumed to be zero, and if it is not zero then it must be "applied" to become zero (which is ensured above).
+    #object_for_calculating_dimensions.scale = Vector([1.0, 1.0, 1.0])
+    ## Trigger a recalculation of the dimensions:
+    #bpy.ops.object.mode_set(mode='OBJECT')
+    #bpy.ops.object.mode_set(mode='EDIT')
+    #bpy.ops.object.mode_set(mode='OBJECT')
     o_dimensions_old = Vector(object_for_calculating_dimensions.dimensions)
     object_for_calculating_dimensions.scale = scale
     # Trigger a recalculation of the dimensions:
@@ -1492,8 +1501,10 @@ def calculate_volume(context, obj):
     bpy.ops.object.select_all(action='DESELECT')
     context.scene.objects.active = obj
     context.scene.objects.active.select = True
+    
     bpy.ops.object.duplicate()
     obj_duplicate = context.scene.objects.active
+    context.scene.objects.active.select = True
     objects_to_be_deleted.append(obj_duplicate)
     
     apply_modifiers(context, obj_duplicate)
@@ -1510,7 +1521,7 @@ def calculate_volume(context, obj):
     volume = 0
     for f in mesh.polygons:
         if len(f.vertices) > 3:
-            print("Warning: Face is not a triangle after triangulation: ", f.index)
+            print("Warning: Face is not a triangle after triangulation: ", f.index, " vertices: ", f.vertices)
         a = mesh.vertices[f.vertices[0]].co
         b = mesh.vertices[f.vertices[1]].co
         c = mesh.vertices[f.vertices[2]].co
