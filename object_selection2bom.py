@@ -116,7 +116,7 @@ def initaddon(context):
     bom_entry_variant_map = {}  # apply modifiers, then different volume => different postprocessing/part/variant ...
     assembly_count_map = {}
     assembly_bom_entry_count_map = {}
-    
+
     global entry_count_highest_digit_count
     entry_count_highest_digit_count = 0
     global object_longest_label_len
@@ -126,7 +126,7 @@ def initaddon(context):
 
     global cache_resolved_dupli_group_dimensions_map
     cache_resolved_dupli_group_dimensions_map = {}
-    
+
     global cache_resolved_dupli_group_volume_map
     cache_resolved_dupli_group_volume_map = {}
 
@@ -143,7 +143,7 @@ def select_automagically(context):
     deselect_all(context)
     # Select depending on if it is a mechanical object. TODO Improve decision taking.
     for o in context.scene.objects:
-        if debug: 
+        if debug:
             print('Scene object: ', o)
         if (o.hide):# Here we skip hidden objects no matter settings as this way
                 # one has the choice to either include object via selecting or
@@ -163,10 +163,10 @@ def select_automagically(context):
             context.scene.objects.active = o  # make active
             if debug:
                 print('Selected object: ', o, ' \tactive object: ', context.scene.objects.active)
-                
+
     # Select object instances depending on if it is a mechanical object. TODO Improve criteria.
     for ob in context.scene.object_bases:
-        if debug: 
+        if debug:
             print('Scene object base: ', ob)
         o = ob.object
         if (o.hide):# Here we skip hidden objects no matter settings as this way
@@ -192,7 +192,7 @@ def select_automagically(context):
             context.scene.objects.active = o    #make active
             if debug:
                 print('Selected object: ', ob, ' \tactive object: ', context.scene.objects.active)
-                  
+
 
 #
 # ACT
@@ -203,7 +203,7 @@ def act(context):
     global bom_entry_info_map
     global assembly_count_map
     global assembly_bom_entry_count_map
-    
+
     initaddon(context)
 
     if debug:
@@ -214,7 +214,7 @@ def act(context):
     scene_layers_to_restore = list(context.scene.layers) # get a copy.
     #if debug:
     #    print('Should be true: ', id(scene_layers_to_restore), ' != ', id(context.scene.layers))
-    
+
     #----------#
     # At this point a selection must have been made either using
     # 'select by pattern' add-on or by manually selecting the objects/items.
@@ -236,16 +236,16 @@ def act(context):
         if debug:
             print('Selection is still empty! Mission aborted.')
         return {'CANCELLED'}
-        
-    ############    
+
+    ############
     # Filelink attribute to be determined according to scene label
     # or active object or selection object at position 0:
     ############
     filelink = build_filelink(context)
-    
-    
+
+
     ##########
-    # OBJECTS (including group instances as those are attached to objects, see dupligroup 
+    # OBJECTS (including group instances as those are attached to objects, see dupligroup
     #          http://wiki.blender.org/index.php/Doc:2.7/Manual/Modeling/Objects/Duplication/DupliGroup)
     ##########
     result = create_bom_entry_recursively(context, context.selected_objects.copy(), [], filelink=filelink)#no deepcopy as the objects
@@ -276,15 +276,15 @@ def act(context):
     #The effect of group instances is twofold:
     #1) Instances are high level parts, containing objects, i.e. other parts.
     #2) Instances are self-contained standalone parts.
-    
+
     #(And should not be resolved. => Here the material has to be specified explicitely or will be stated as mixed.)
-    
+
     #global bom_entry_count_map
     #bom_entry_count_map = {}    #clear the map/dictionary --> now appending to the already created BoM for objects/group instances.
     append_to_file(context, "\r\n\n\nGROUPS OF SCENE\r\n")
     #TODO Create separate bom_entry_count_map for groups, because until now here several lines are added redundantly!
-    
-    
+
+
     for g in bpy.data.groups:#bpy.types.BlendData.groups:
 
         #examine if all objects are in the current context scene
@@ -293,13 +293,13 @@ def act(context):
             if not o.is_visible(context.scene):
                 are_all_objects_in_context_scene = False
                 break#cancel further examination
-        
+
         #Is this group not completely in the current/context scene?
         if (not are_all_objects_in_context_scene):
             if debug:
                 print('Not all objects of this group ', g, ' are (visible) in this scene: ', context.scene)
             continue#next Group within the blend file
-            
+
         #Add this group to the bill of materials as standalone complete part on its own (not resolving to objects)?
         if (not context.scene.selection2bom_in_mode == '0'):#not resolve_groups):
             #group has a partname identifier and this hopefully contains a material:<material>,
@@ -317,14 +317,14 @@ def act(context):
                         print('dupli group/group instance was None/null or no objects'
                                 'were contained. Object count: ', len(o_g.dupli_group.objects))
                     continue
-                
+
                 bom_entry = build_and_store_bom_entry(context, o_g, filelink=filelink)
                 #build_bom_entry() is not enough as we have to keep track of the occurence counts => and store
                 append_bom_entry_to_file(context, bom_entry)
-        
-            
+
+
             continue#no further examination of the group's objects
-        
+
         #######
         # RESOLVE GROUP TO OBJECTS
         #######
@@ -333,14 +333,14 @@ def act(context):
             bom_entry = build_and_store_bom_entry(context, o, filelink=filelink)
             #build_bom_entry() is not enough as we have to keep track of the occurence counts => and store
             append_bom_entry_to_file(context, bom_entry)
-            
 
-        
 
-        
+
+
+
     #Everything was fine then!
     return True#selection_result
-    
+
     ############
     #act-furthermore
     ############
@@ -382,7 +382,7 @@ def is_longest_material_then_store_len(material_label='', material=None):
         m_label = getBaseName(material_label)
     else :
         m_label = getBaseName(material.name)
-        
+
     letter_count = len(m_label)
     if (letter_count > material_longest_label_len):
         material_longest_label_len = letter_count
@@ -420,7 +420,7 @@ def is_longest_entry_count_then_store_len(entry_count):
 def create_bom_entry_recursively(context, o_bjects, owning_group_instance_objects, recursion_depth=0, filelink=None):
     if debug:
         print(str(recursion_depth) + ' Creating BoM entry recursively ...')
-        
+
     if (recursion_depth > context.scene.after_how_many_create_bom_entry_recursions_to_abort):
         if debug:
             print('Failed creating bom entries in time. Recursion limit exceeded: '
@@ -428,23 +428,23 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
         return {'CANCELLED'}
 
 
-    
+
     if debug:
         print(str(recursion_depth) + ' Encountered: ', o_bjects, ' type: ', type(o_bjects))
-    
-    
-    
+
+
+
     #termination condition will be checked here:
     #-------
     # OBJECT?
     #-------
     if type(o_bjects) is bpy.types.Object:
-        
+
         is_longest_object_label_then_store_len(o_bjects)
         if debug:
             print(str(recursion_depth) + ' Encountered an object: ', o_bjects, ' blender-Type: ', o_bjects.type)
-        
-        
+
+
         #Is object type considered? (not considered are e.g. armatures.)
         #dupligroup/groupinstance can theoretically be attached to any object, but we only consider those:
         if (is_object_type_considered(o_bjects.type)):#(o_bjects has to be an object for type to exist)
@@ -452,26 +452,26 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
             #is_to_be_listed_into_bom = False
             # Evaluate the object type and current mode:
 
-            #Is not a group instance?        
+            #Is not a group instance?
             if (o_bjects.dupli_group is None):
                     #or o_bjects.dupli_type is not 'GROUP'<--TODO:superfluous? What effects does changing the duplitype setting have?
                 if (not o_bjects.is_visible(context.scene)):
                     if debug:
                         print('Object ', o_bjects,' is not visible in the current scene: ', context.scene)
                     return {'CANCELLED'}
-                    
+
                 # This object is not functioning as a group instance container!
                 # In all modes, these objects get an entry in the BoM.
                 if (not build_and_store_bom_entry(context, o_bjects, owning_group_instance_objects, filelink=filelink)):
                     if debug:
                         print('Failed to write bom entry to file. ', o_bjects, recursion_depth)
                     return {'CANCELLED'}
-                    
+
                 return {'FINISHED'}
 
 
             #NOTE: PAY ATTENTION TO BLANK LINES - COMPILER COULD ASSUME THE ELIF STATEMENT IS ALREADY DONE.
-            
+
             #Is a group instance?
             elif (o_bjects.dupli_group is not None
                     #and o_bjects.dupli_type is 'GROUP'<--TODO:superfluous? What effects does changing the duplitype setting have?
@@ -481,7 +481,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                     and (len(o_bjects.dupli_group.objects) > 0)): # If no objects are linked here the creation of a BoM entry is pointless.
                 if debug:
                     print('It\'s a Group instance! Attached dupli group: ', o_bjects.dupli_group)
-                    
+
                 #Resolving groups is not desired?
                 if (context.scene.selection2bom_in_mode == '0'):
                     if debug:
@@ -497,7 +497,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                             print('Failed to write bom entry of group instance to file: ', o_bjects, '\t dupli group: ', o_bjects.dupli_group)
                         return {'CANCELLED'}
                     return {'FINISHED'}
-                    
+
                 # Hybrid mode? i.e. list in bom and resolve objects too?
                 elif (context.scene.selection2bom_in_mode == '2'):
                     if debug:
@@ -519,7 +519,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
 
                 # Attempt to resolve the group instance into the objects the group contains:
                 resolve_group_result = o_bjects.dupli_group.objects#resolve_group(group)
-                
+
                 #if (context.scene.selection2bom_in_mode == '2'):
                 #    build_and_store_bom_entry(context, '------- Parts of assembly `' + o_bjects.dupli_group.name + '`: -------')
                 #    #more generic as not every group instance may be a coherent assembly: build_and_store_bom_entry(context, '------- Grouped Parts `' + o_bjects.dupli_group.name + '`: -------')
@@ -528,40 +528,40 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
                     if debug:
                         print('Failed to resolve a group or group was empty. ', str(o_bjects.dupli_group))
                     return {'CANCELLED'}
-                    
+
                 # Group resolved into objects!
                 if debug:
                     print('Resolved a group. Count of objects in group: ', len(resolve_group_result))
-                owning_group_instance_objects.append(o_bjects) 
+                owning_group_instance_objects.append(o_bjects)
                 for obj in resolve_group_result:
                     print(obj, " ==? ", o_bjects)
                     if obj == o_bjects:# or obj.name == o_bjects.name:
                         print("Skipping resolved object because it is the given object itself: ", obj)
                         continue
                     create_bom_entry_recursively(context, obj, owning_group_instance_objects, recursion_depth=(recursion_depth + 1), filelink=filelink)
-                
+
                 owning_group_instance_objects.remove(o_bjects)
 
                 #if (context.scene.selection2bom_in_mode == '2'):
                 #    build_and_store_bom_entry(context, '------- Parts of assembly `' + o_bjects.dupli_group.name + '` -END -------')
                 return {'FINISHED'}
-                 
+
             else:
                 #if no objects are linked here the creation of a BoM entry is pointless
                 if debug:
                     print('It may be a group instance ', o_bjects.dupli_group, ' but has no objects: ', o_bjects.dupli_group.objects)
                 return {'CANCELLED'}
-           
-            
-            
+
+
+
         #Object type is not considered then:
         else:
             if (debug):
                 print(str(recursion_depth) + ' Object type ', o_bjects.type, ' is not considered (e.g. armatures are not considered a mechanical part).')
             return {'CANCELLED'}
-            
-        
-        
+
+
+
     #-------
     # LIST?
     #-------
@@ -578,7 +578,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
     #this time none of the above conditions was met:
     if debug:
         print('Did not match any branch for creating a BoM entry:', o_bjects, ' type:', type(o_bjects))
-    
+
     return {'FINISHED'}
 
 
@@ -598,10 +598,10 @@ PATTERN_OPTIONAL = '(optional' + '[-_ ]+|[-_ ]+optional)'
 PATTERN_ATOM = '(atom' + '[-_ ]+|[-_ ]+atom)'
 def is_object_atomar(o):
     return (re.search(PATTERN_ATOM, o.name.lower()) != None)
-    
+
 def is_object_optional(o):
     return (re.search(PATTERN_OPTIONAL, o.name.lower()) != None)
-    
+
 
 
 #
@@ -620,9 +620,9 @@ def is_object_optional(o):
 #    return write2file(context, bom_entry)
     #ATTENTION: BETTER FIRST CREATE ALL BOM ENTRIES, STORING THEM IN THE UNIQUE ENTRY LIST,
     #INCREMENTING THE EQUAL BOM ENTRY COUNT AND ONLY THEN WRITE THIS TO FILE!
-  
-  
-  
+
+
+
 bom_entry_count_map = {}
 bom_entry_info_map = {}  # url, part id, ...
 assembly_count_map = {}
@@ -635,14 +635,14 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
     global bom_entry_variant_map
     global assembly_count_map
     global assembly_bom_entry_count_map
-    
+
     # Also give parent group instance/assembly to allow to inherit its delta transforms:
     bom_entry = build_bom_entry(context, o, owning_group_instance_objects, filelink=filelink, delete_join_result_if_differs=False)#http://docs.python.org/3/tutorial/datastructures.html#dictionaries => items()
     resulting_o = context.scene.objects.active # for volume calculation.
-    
+
     #if debug:
     print('Generated BoM entry: ', bom_entry)
-    
+
     # Store info like URL, part number, ...
     if o.data:
         bom_entry_info = getBaseName(o.data.name)  # Object data (e.g. mesh) makes sense as base parts, as modifiers operate on objects. i.e. if the mesh is equal, then the part to be ordered also probably is equal. e.g. Many things can be manufactured out of a metal block.
@@ -655,8 +655,8 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
             if bom_entry_info_map[bom_entry] != bom_entry_info:
                 if debug:
                    print('build_and_store_bom_entry(): Info already determined but the new information differs. current: ', bom_entry_info_map[bom_entry], ' vs. new: ', bom_entry_info)
-            
-    
+
+
     # NOTE This may be moved to build_bom_entry once it is included in the bom entry itself. Currently volume is treated separately.
     volume = -1
     global cache_resolved_dupli_group_volume_map
@@ -671,14 +671,14 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
             cache_resolved_dupli_group_volume_map[o.dupli_group] = volume
     else:
         print("Neither dupli group to resolve nor supported object type for volume calculation for object: ", resulting_o, " type: ", resulting_o.type, " dupli group:", resulting_o.dupli_group)
-    
+
     if volume != -1:
         # First encountered this entry volume variant?
         if not (bom_entry in bom_entry_variant_map.keys()):
             bom_entry_variant_map[bom_entry] = {}
             if debug:
                 print('Keeping track of new variant/kind/post-processing of bom_entry ', bom_entry, ': volume: ', volume)
-                
+
         if not (volume in bom_entry_variant_map[bom_entry].keys()):
             bom_entry_variant_map[bom_entry][volume] = 1
             # Generate blueprint:
@@ -688,7 +688,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
                     blueprint_filelink_relative = build_blueprint_filelink(filelink, bom_entry, volume)
                     # Using the filelink relative to the open .blend file.
                     root = bpy.path.abspath('//')
-                    blueprint_filelink = root + blueprint_filelink_relative 
+                    blueprint_filelink = root + blueprint_filelink_relative
                     print("blueprint filelink previous: ", context.scene.blueprint_settings.filelink)
                     filepath_old = context.scene.render.filepath
                     context.scene.render.filepath = blueprint_filelink
@@ -701,7 +701,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
         # Follow-up encounter of this postprocessed/volume variant of the entry:
         else:
             bom_entry_variant_map[bom_entry][volume] += 1
-    
+
     # Resulting object no longer is required as volume is calculated and the engineering drawings are generated too.
     # TIDY UP:
     # Delete the join target if it is not the object that has to be resolved itself, which must be handled by the calling function that gave this object as a parameter to this function.
@@ -713,9 +713,9 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
             resulting_o.select = True
             print("deleting resulting_o after volume and blueprint calculations: ", resulting_o)
             bpy.ops.object.delete()
-        
-    
-        
+
+
+
 
     # Keep track of how many BoM entries of same type have been found.
     count_map = bom_entry_count_map
@@ -735,12 +735,12 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
             #else:
             #    # Both maps need to be incremented if atomar.
             #    increment_entry_in_map(bom_entry, assembly_count_map)
-                
+
     increment_entry_in_map(bom_entry, count_map)
 
     # Have to add assembly entry?
     owning_group_instance_objects_length = len(owning_group_instance_objects)
-        
+
     if (owning_group_instance_objects_length > 0):
     #for i in range(owning_group_instance_objects_length - 1, -1):
         # Important Note: The last item of the list could be spliced out! It's not done for performance. It's tested if for equality and skipped instead - in build_bom_entry().
@@ -748,7 +748,7 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
         parent_group_instance = None
         #if (owning_group_instance_objects_length > 0):
         parent_group_instance = owning_group_instance_objects[owning_group_instance_objects_length - 1]
-        # Makes no sense to increment bom entry of an assembly if the assembly is the bom entry itself: 
+        # Makes no sense to increment bom entry of an assembly if the assembly is the bom entry itself:
         if owning_group_instance_objects_length > 1 or parent_group_instance != o:
             if debug:
                 print('Assembly: Building bom entry ...')
@@ -758,36 +758,36 @@ def build_and_store_bom_entry(context, o, owning_group_instance_objects, filelin
                 if debug:
                     print('Assembly: From now on keeping track of assembly: ', assembly_bom_entry)
                 assembly_bom_entry_count_map[assembly_bom_entry] = {}
-                
+
             if (not (bom_entry in assembly_bom_entry_count_map[assembly_bom_entry])):
                 if debug:
                     print('Assembly: From now on keeping track of bom_entry count of ', bom_entry)
                 assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] = 0
-        
+
             assembly_bom_entry_count_map[assembly_bom_entry][bom_entry] += 1
             if debug:
                 print('Assembly:', assembly_bom_entry, ' -> new part count: ', assembly_bom_entry_count_map[assembly_bom_entry][bom_entry], 'x ', bom_entry)
-    
+
     print('----*done*,constructed and stored global Bill of materials and Assembly listing entries.')
     return bom_entry
-    
-    
+
+
 
 def increment_entry_in_map(bom_entry, count_map):
     if (not (bom_entry in count_map)):
         if debug:
             print('From now on keeping track of bom_entry count of ', bom_entry)
         count_map[bom_entry] = 0
-        
+
     count_map[bom_entry] = count_map[bom_entry] + 1
     if debug:
         print('-> new part count: ', count_map[bom_entry], 'x ', bom_entry)
     # To know how much compensating whitespace to insert later:
-    is_longest_entry_count_then_store_len(count_map[bom_entry])  
+    is_longest_entry_count_then_store_len(count_map[bom_entry])
 
-    
- 
-#    
+
+
+#
 #g: bpy.types.Group not a group instance, i.e. no object with dupli group bpy.types.Group attached
 def build_and_store_bom_entry_out_of_group(context, g):
     if debug:
@@ -812,12 +812,12 @@ def normalize_matrix_3x3(rotation_matrix):
     rot_y = Vector([rotation_matrix[1][0], rotation_matrix[1][1], rotation_matrix[1][2]])
     # column 2:
     rot_z = Vector([rotation_matrix[2][0], rotation_matrix[2][1], rotation_matrix[2][2]])
-    
+
     # Extract the scale to allow to cancel it:
     scale_x = rot_x.length
     scale_y = rot_y.length
     scale_z = rot_z.length
-    
+
     # Or rather just normalize and reconstruct the (bare) rotation matrix:
     #rotation_matrix = Matrix(rot_x.normalize(), rot_y.normalize(), rot_z.normalize())
     rot_x_normalized = rot_x.normalize()
@@ -830,15 +830,15 @@ def normalize_matrix_3x3(rotation_matrix):
     rot_z_normalized = rot_z.normalize()
     if not rot_z_normalized:
         rot_z_normalized = rot_z
-    
+
     rotation_matrix[0][0] = rot_x_normalized[0]
     rotation_matrix[0][1] = rot_x_normalized[1]
     rotation_matrix[0][2] = rot_x_normalized[2]
-    
+
     rotation_matrix[1][0] = rot_y_normalized[0]
     rotation_matrix[1][1] = rot_y_normalized[1]
     rotation_matrix[1][2] = rot_y_normalized[2]
-    
+
     rotation_matrix[2][0] = rot_z_normalized[0]
     rotation_matrix[2][1] = rot_z_normalized[1]
     rotation_matrix[2][2] = rot_z_normalized[2]
@@ -856,7 +856,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         print('build_bom_entry: o:', o, ' owning_group_instance_objects:', owning_group_instance_objects)
     #build BoM entry: using http://www.blender.org/documentation/blender_python_api_2_69_release/bpy.types.Object.html
     entry = getBaseName(o.name)
-    
+
     index = -1
     material = None
     if (o.active_material is None):
@@ -874,7 +874,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
                     m = getBaseName(group_object.active_material.name)
                 #else:
                 #    m = group_object.material_slots[0].material.name
-                
+
                 if material is None:
                     material = m
                 else:
@@ -883,22 +883,22 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
                         share_same_material = False
                         material = 'MIXED'
                         break # can not take over a material other than 'mixed'.
-                    
+
             if not share_same_material:
                 print('Found no material shared by all attached group object members: ', o.dupli_group.objects)
     else:
         material = getBaseName(o.active_material.name)    #default value
-        
+
     if material is None:# or material == 'transparent': # <- HACK: Because the material is changed to 'transparent' by the blueprint extension and not had been ensured to be restored - which is fixed in revision .
         material = '-'
-        
+
     #look for a material explicitely specified:
     index = o.name.find('material:')
     if (index != -1):
         parts = o.name.split('material:')
         if (len(parts) > 1):
             material = parts[1]     #material given explicitely, e.g. Aluminium (Isotope XY)
-        entry = parts[0]            
+        entry = parts[0]
     else:
         index = o.name.find('Material:')
         if (index != -1):
@@ -934,7 +934,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
                             if (len(parts) > 1):
                                 material = parts[1]
                             entry = parts[0]
-    
+
     # Remove indicators:
     atomar_indicator = 'atom'
     atomar_index = entry.find('' + atomar_indicator)
@@ -954,9 +954,9 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     index = entry.find('' + indicator)
     if (index != -1):
         entry = re.sub(PATTERN_OPTIONAL, '', entry)
-    
+
     # While optional and atomar indicator can be set per group instance object, the entry should be consistently using the dupli group name if available.
-    # Otherwise entry counts of assemblies may be 0, 
+    # Otherwise entry counts of assemblies may be 0,
     # if the group instance naming differs from the dupli group name.
     if o.dupli_group and o.dupli_group.name:
         if atomar_index != -1:
@@ -964,21 +964,21 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         else:
             print("build_bom_entry(): Assembly entry uses dupli group name: ", o.dupli_group.name)
         entry = getBaseName(o.dupli_group.name)
-    
+
 
     #keep track of the longest material label
     is_longest_material_then_store_len(material_label=material)
-    
+
     #dimensions
     context.scene.objects.active = o
-    
-    
+
+
     #######
     # DIMENSIONS
     #######
     # Dimension already takes dimension-influencing modifiers like array, skin, solidify into account (applying all modifiers is thus not required).
     # TODO don't take the absolute bounding_box dimensions - instead calculate from a hull of the object?
-    
+
     #undo_count = 0 #now working with a copy of the initially selected_objects (no longer a live copy/reference)
     # If empties not had the dimensions property, then it leads to an error because an empty does not have dimensions in general. TODO Are dimensions for empties just zero as of current blender?
     x = o.dimensions[0] # As it's in object context, the scale is taken into account in the bounding box already.
@@ -986,10 +986,10 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     z = o.dimensions[2]
     # If provided inherit parent group instances' transforms:
     # If o owning_o equality and skip if equal (see performance hack, it's done to avoid removing element from the list which is live and still needed later).
-        
-    
+
+
     resulting_o = o
-    
+
     global cache_resolved_dupli_group_dimensions_map
     if o.dupli_group and o.dupli_group in cache_resolved_dupli_group_dimensions_map:
         if debug:
@@ -997,7 +997,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         x = cache_resolved_dupli_group_dimensions_map[o.dupli_group][0]
         y = cache_resolved_dupli_group_dimensions_map[o.dupli_group][1]
         z = cache_resolved_dupli_group_dimensions_map[o.dupli_group][2]
-        
+
     elif (not (o.dupli_group is None) and len(o.dupli_group.objects) > 0):
 
         #if debug:
@@ -1005,16 +1005,16 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         context.scene.objects.active = o
         bpy.ops.object.resolve_and_join()
         resulting_o = context.scene.objects.active
-        
-        print('Adopting total dimensions of the complete assembly (joined): ', context.scene.objects.active)    
-        # Inherit the dimensions. 
+
+        print('Adopting total dimensions of the complete assembly (joined): ', context.scene.objects.active)
+        # Inherit the dimensions.
         x = context.active_object.dimensions[0]
         y = context.active_object.dimensions[1]
         z = context.active_object.dimensions[2]
         cache_resolved_dupli_group_dimensions_map[o.dupli_group] = resulting_o.dimensions.copy()  # <-- Can't store the reference as this object is just temporary. Might require recheck of validity, though such invalidation while executing the selection2bom script is impossible in blender as of now (check revision time) because the objects can't be manipulated while the operator (addon) is executing.
     #else: # no dupli group.
-         
-         
+
+
     # Duplicates_make_real already makes the resulting objects inherit the scale! If that ever changes, then enable the following commented lines that then would be required for group instances/empties only, because the dimensions of mesh and curve objects already include the scale. Thus both when the dupli group is resolved and when its dimension is read from the cache - then the group instance's scale needs to be applied (if duplicates_make_real operator functionality no longer takes scale into account):
     #if o.dupli_group:
     #    # Apply scale of this (empty) object as it might be scaled itself:
@@ -1024,29 +1024,29 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     #    x *= o.delta_scale[0]
     #    y *= o.delta_scale[1]
     #    z *= o.delta_scale[2]
-       
-    
-    
+
+
+
     #if resulting_o.name == "Nut.012":
     print("scale: ", resulting_o.scale, " dimensions: ", resulting_o.dimensions)
-    # TODO => Resolve scale, it's not included after make duplicates real python call?!!    
-        
-    # Apply inherited delta transforms:    
+    # TODO => Resolve scale, it's not included after make duplicates real python call?!!
+
+    # Apply inherited delta transforms:
     owning_group_instance_objects_length = len(owning_group_instance_objects)
     owning_group_instance_objects_index = owning_group_instance_objects_length - 1
     is_optional = False
     # The rotation is no longer cancelled out, thus the inverted matrices must be chained/multiplied:
-    
+
     # NOTE In blender, the scale is stored in the rotation matrix. Each rotation vector/column usually has amount/length of 1, i.e. is normalized. The difference is the scale. => The amount of a rotation vector is the scale along this (local/object frame) axis.
     # What is needed though is the bare rotation matrix, i.e. the one made of normalized vectors. This means the scale must be canceled:
     # Note it is assumed the to_3x3() not uses a reference to the original matrix, else it could lead to problems because the normalize_matrix_3x3() function operates directly on the given matrix.
     rotation_matrix = None # <- The matrix that transforms the world frame scale vector into the local frame (to be compatible with the object's scale which also is in this frame and this is the object that inherits the owning group instance objects' scale which makes the transformation necessary).
     rotation_matrix = o.matrix_basis.to_3x3()
     print("o: ", o, " o.scale: ", o.scale)
-    
-    
+
+
     rotation_matrix_for_deriving_scale = Matrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    
+
     # For non multiples of pi/2, i.e. 90degree:
     #basis_matrix = Matrix(o.matrix_basis)#Matrix([1, 0, 0], [0, 1, 0], [0, 0, 1])
     while owning_group_instance_objects_index > -1:
@@ -1057,50 +1057,50 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             print("Owning group instance is != o.")
             # The object itself or any of the previous owning group instance objects may be rotated, so either this rotation must be cleared or the rotation must be taken into account:
             ogio_rotation_matrix = owning_group_instance_object.matrix_basis.to_3x3()
-            
+
             # NOTE Either left or right multiplication is chosen randomly here.
             rotation_matrix_inverted = ogio_rotation_matrix.inverted()
             normalize_matrix_3x3(rotation_matrix_inverted)
             ogio_scale_world_frame = rotation_matrix_inverted * owning_group_instance_object.scale# * rotation_matrix_inverted
             ogio_delta_scale_world_frame = rotation_matrix_inverted * owning_group_instance_object.delta_scale# * rotation_matrix_inverted
-            
+
             #owning_group_instance_object.rotation_euler = ogio_rotation_euler_to_restore
-            
+
             # Print results:
             print('object scale: ', owning_group_instance_object.scale, ' -> rotation inverted scale: ', ogio_scale_world_frame)
             print('object delta_scale: ', owning_group_instance_object.delta_scale, ' -> rotation inverted delta scale: ', ogio_delta_scale_world_frame)
-            
+
             #Not required because while the scale is local, the scale is not what is evaluated but the dimensions, which is a vector given in world reference frame. ogio_scale = rotation_matrix * ogio_scale_world_frame
             #ogio_scale = ogio_scale_world_frame
-            
+
             direction_x = Vector([1, 0, 0])
             direction_y = Vector([0, 1, 0])
             direction_z = Vector([0, 0, 1])
-            
+
             ogio_scale_x = owning_group_instance_object.scale[0] * direction_x
             ogio_scale_y = owning_group_instance_object.scale[1] * direction_y
             ogio_scale_z = owning_group_instance_object.scale[2] * direction_z
-            
+
             ogio_scale_x_world_frame = rotation_matrix_inverted * ogio_scale_x
             ogio_scale_y_world_frame = rotation_matrix_inverted * ogio_scale_y
             ogio_scale_z_world_frame = rotation_matrix_inverted * ogio_scale_z
-            
+
             ogio_scale = ogio_scale_x_world_frame + ogio_scale_y_world_frame + ogio_scale_z_world_frame
             print("ogio_scale = %s = scale_x_w + scale_y_w + scale_z_w = %s + %s + %s" % (ogio_scale, ogio_scale_x_world_frame, ogio_scale_y_world_frame, ogio_scale_z_world_frame))
-            
+
             #normalize_matrix_3x3(ogio_rotation_matrix)
             # Note matrices are distributiv, i.e. the side from which the calculation is started, does not matter.
             # Note matrices are commutative, i.e. the order of multiplication matters. Right multiplication because its reference is the mobile coordinate frame and the iteration direction is reverse, from lowest to highest owning group instance / parent:
             #rotation_matrix_for_deriving_scale = rotation_matrix_for_deriving_scale * ogio_rotation_matrix
             rotation_matrix_for_deriving_scale = ogio_rotation_matrix * rotation_matrix_for_deriving_scale
             print("ogio: ", owning_group_instance_object, " overall scale so far: ", rotation_matrix_for_deriving_scale.to_scale())
-            
-            
+
+
         if (is_object_optional(owning_group_instance_object)):
             is_optional = True
-        
+
         owning_group_instance_objects_index -= 1
-    
+
     rotation_matrix_normalized = Matrix(rotation_matrix)
     normalize_matrix_3x3(rotation_matrix_normalized)
     # The inverse is still needed for the reverse rotation because the from resolving a group instance to its objects resulting joined object does not have the same transform, i.e. not the same local/mobile/object coordinate frame, therefore the scale is wrong and must be rotated (or alternatively the transformations must be copied to the object for calculating the dimensions via the scale trick, see a bit below):
@@ -1111,7 +1111,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
         rotation_matrix_for_deriving_scale = rotation_matrix_for_deriving_scale * rotation_matrix_normalized
     else:
         rotation_matrix_for_deriving_scale = rotation_matrix_for_deriving_scale * rotation_matrix
-        
+
     # Is resolved group instance/assembly?
     if resulting_o and resulting_o != o:
         # Revert the rotation but keep the scale:
@@ -1130,7 +1130,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     selected_objects_pre_scale = list(context.selected_objects)
     if o.type == 'EMPTY':
         object_for_calculating_dimensions = resulting_o
-        
+
         if not resulting_o or resulting_o == o:
             print("active before adding new: ", context.scene.objects.active)
             #Object not found? bpy.ops.object.add_named(name="object_for_calculating_dimensions")
@@ -1146,7 +1146,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             object_for_calculating_dimensions.dimensions[1] = y
             object_for_calculating_dimensions.dimensions[2] = z
             #objects_to_be_deleted.append(object_for_calculating_dimensions)
-            
+
     ## Even the scale of the original object must be applied, because its scale must be assumed as 1 because the determined owning group instances' scale is relative to the child object, and this means the scale needs be chained - which is difficult to do without matrices, thus temporarily apply the scale to make it appear as if it'd not be scaled at all.
     #if not resulting_o or resulting_o != o:
     # Applying the scale is not required in all cases because the scale is overridden. Scale is relative to the dimensions, it must be overridden if the reference dimensions shall take the scale into account. Here that is the case, therefore it is overriden for the resolved dupli group (because its scale may differ from 1 and yet its dimensions are valid and the reference) and the newly created object (because assigning to the dimensions property may indirectly change the object's scale):
@@ -1156,13 +1156,13 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     context.scene.objects.active = object_for_calculating_dimensions
     context.scene.objects.active.select = True
     bpy.ops.object.transform_apply(scale = True)
-    
+
     # Restore previous state:
     for selected_obj in selected_objects_pre_scale:
         selected_obj.select = True
     context.scene.objects.active = active_object_pre_calculating_dimensions
-            
-        
+
+
     o_scale_old = Vector(object_for_calculating_dimensions.scale)#Vector(o.scale)
     ## Reset to 1 because the dimensions are relative. NOTE The scale is relative to the leaf object! This means the scale must be assumed to be zero, and if it is not zero then it must be "applied" to become zero (which is ensured above).
     #object_for_calculating_dimensions.scale = Vector([1.0, 1.0, 1.0])
@@ -1192,7 +1192,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     y += delta_y
     z += delta_z
     object_for_calculating_dimensions.scale = o_scale_old
-    
+
     # Is the newly created temporary object?
     if object_for_calculating_dimensions and object_for_calculating_dimensions != resulting_o and object_for_calculating_dimensions != o:
         delete_objects(context, [object_for_calculating_dimensions])
@@ -1202,36 +1202,36 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     #x *= abs(delta_scale[0])
     #y *= abs(delta_scale[1])
     #z *= abs(delta_scale[2])
-    
-    
+
+
     #determine units using the unit scale of the scene's unit/world settings
     dimensions = [
             getMeasureString(x, context.scene.unit_settings, context.scene.selection2bom_in_precision),
             getMeasureString(y, context.scene.unit_settings, context.scene.selection2bom_in_precision),
             getMeasureString(z, context.scene.unit_settings, context.scene.selection2bom_in_precision),
     ]
-    
-    
-    
+
+
+
     #undo - restore the modifiers #if no active object then no modifiers have been applied hence nothing to be undone.
     #if ( not (context.active_object is None) and not (result == {'CANCELLED'}) ):
     #    operations_undone_count = 0
-    #    while (operations_undone_count < operations_to_undo_count): 
+    #    while (operations_undone_count < operations_to_undo_count):
     #        result = bpy.ops.ed.undo()#undo_history()
     #        if (result):
     #            operations_undone_count = operations_undone_count + 1
     #    if debug:
     #        print('operations_undone count: ', operations_undone_count)
-        
+
     bom_entry = entry + '___' + material + '___[' + dimensions[0] + ' x ' + dimensions[1] + ' x ' + dimensions[2] + ']___'
     if (is_optional):
         bom_entry = bom_entry + '1'
     #else:
     #    bom_entry = bom_entry + '0'
-        
+
     #NOT RELEVANT: + '\t \t[object is in group: ' o.users_group ', in Scenes: ' o.users_scene ']'
-    
-    
+
+
     #######
     # VOLUME VARIANTS (as independent additional information)
     #######
@@ -1241,13 +1241,13 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
     #       the corresponding generated blueprint can be assembled and the count and
     #       images of the variants included in the BOM.
     volume_bounding_box = x * y * z
-    # NOTE The effort to calculate the real volume has been moved to the calling function because volume currently is not included in the bom entry directly. 
-    
+    # NOTE The effort to calculate the real volume has been moved to the calling function because volume currently is not included in the bom entry directly.
+
     # NOTE The calling function is responsible for deleting the join result if the join result is still needed afterwards, which may not be intuitive, nevertheless currently is required due to technical reasons (namely allowing this function to be called for assembly entry generation without having it to generate engineering drawings, volume again and again).
     if not delete_join_result_if_differs:
         context.scene.objects.active = resulting_o
         return bom_entry
-    
+
     # TIDY UP:
     # Delete the join target if it is not the object that has to be resolved itself, which must be handled by the calling function that gave this object as a parameter to this function.
     if resulting_o != o:
@@ -1258,7 +1258,7 @@ def build_bom_entry(context, o, owning_group_instance_objects, filelink=None, de
             resulting_o.select = True
             print("deleting resulting_o: ", resulting_o)
             bpy.ops.object.delete()
-        
+
     return bom_entry
 
 
@@ -1272,7 +1272,7 @@ class OBJECT_OT_ResolveRecursively(bpy.types.Operator):
     bl_register = True
     bl_undo = True
     #bl_options = {'REGISTER', 'UNDO'}
-    
+
     #=======CONSTRUCTION=======================================================#
     #def __init__(self):
     #=======METHODS============================================================#
@@ -1288,31 +1288,31 @@ class OBJECT_OT_ResolveRecursively(bpy.types.Operator):
         time_start = time.time()
         #print("Storing selected objects ...")
         #selected_objects = list(context.selected_objects)
-        
+
         print("Initiating resolve of %s ..." % context.scene.objects.active)
         objects_to_be_deleted = []
         objects_to_be_joined = []
-        
+
         resolve_all_joinable_objects_recursively(context, context.scene.objects.active, objects_to_be_joined, objects_to_be_deleted)
-        # TODO As resolving group instances recursively is costly, it would be nice to use more of the info gained. 
+        # TODO As resolving group instances recursively is costly, it would be nice to use more of the info gained.
         # TODO When to apply modifiers?
         print("*done* Resulting objects: ", objects_to_be_joined)
         # Tidy up:
         print("Tidying up ...")
         delete_objects(context, objects_to_be_deleted, exceptions=context.selected_objects)
-        
+
         #print("Restoring selected objects ...")
         #bpy.ops.object.select_all(action='DESELECT')
         #for o in selected_objects:
         #   o.select = True
         #print("*done*")
-        
+
         # Ensure nothing is selected:
         deselect_all(context)
         # Select the joined objects:
         for o in objects_to_be_joined:
             o.select
-        
+
         print("Resolve finished, required: %.4f sec" % (time.time() - time_start))
         return {'FINISHED'}
 
@@ -1327,7 +1327,7 @@ class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
     bl_register = True
     bl_undo = True
     #bl_options = {'REGISTER', 'UNDO'}
-    
+
     #=======CONSTRUCTION=======================================================#
     #def __init__(self):
     #=======METHODS============================================================#
@@ -1341,7 +1341,7 @@ class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
     #
     def execute(self, context):
         time_start = time.time()
-        
+
         print("Initiating resolve of %s and join ..." % context.scene.objects.active)
         objects_to_be_deleted = []
         objects_to_be_joined = []
@@ -1368,7 +1368,7 @@ class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
             print("Deleting ...")
             bpy.ops.object.delete()
         print("*done*")
-        
+
         print("Resolve and join finished, required: %.4f sec" % (time.time() - time_start))
         return {'FINISHED'}
 
@@ -1376,22 +1376,22 @@ class OBJECT_OT_ResolveAndJoin(bpy.types.Operator):
 
 
 def resolve_and_join(context, o, objects_to_be_joined=[], objects_to_be_deleted=[]):
-    
+
     resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, objects_to_be_deleted)
-    
+
     # Ensure nothing is selected:
     deselect_all(context)
-    
-    # TODO As resolving group instances recursively is costly, it would be nice to use more of the info gained. 
+
+    # TODO As resolving group instances recursively is costly, it would be nice to use more of the info gained.
     # TODO When to apply modifiers?
-    
+
     objects_to_be_joined_length = len(objects_to_be_joined)
     if objects_to_be_joined_length > 0:
         for objects_to_be_joined_index in range(0, objects_to_be_joined_length):
             object_to_be_joined = objects_to_be_joined[objects_to_be_joined_index]
             object_to_be_joined.select = True
             apply_modifiers(context, object_to_be_joined)
-        
+
         # Arbitrarily choose the last object as target:
         context.scene.objects.active = objects_to_be_joined[objects_to_be_joined_length - 1]
         if debug:
@@ -1425,7 +1425,7 @@ def generate_engineering_drawing(context, obj):
     #    raise Error
     active_old = context.scene.objects.active
     bpy.ops.object.select_all(action='DESELECT')
-        
+
     context.scene.objects.active = obj
     obj_select = obj.select
     obj.select = True
@@ -1436,10 +1436,10 @@ def generate_engineering_drawing(context, obj):
     # Invoke operator of selection2blueprint addon:
     bpy.ops.object.selection2blueprint()
     obj.select = obj_select
-    
+
     # restore active object:
     context.scene.objects.active = active_old
-    
+
     print(execution_round, " x generate engineering drawing for BoM finished")
 
 execution_round = 0
@@ -1455,12 +1455,12 @@ def apply_modifiers(context, obj):
     #selection_old = list(context.selected_objects)
     #bpy.ops.object.select_all(action='DESELECT')
     context.scene.objects.active = obj
-    
+
     # Because multi-user mesh does not allow applying modifiers:
     if not (bpy.ops.object.make_single_user(object=True, obdata=True)):#, material=True, texture=True, animation=True)):
         print("apply_modifiers(): Could not make obj %s single user object, data.", obj)
-        return 
-    
+        return
+
     # apply modifiers from top to bottom:
     modifier_count = len(obj.modifiers)
     modifiers_index = 0
@@ -1481,11 +1481,11 @@ def apply_modifiers(context, obj):
         bpy.ops.object.modifier_apply(apply_as='DATA',modifier=m.name)
         #modifiers_index += 1 <- because the others are shifted upwards.
         modifier_count -= 1
-        
+
     # Restoring layer configuration ...
     for o, layers in object_to_layers_to_restore_map.items():
         o.layers = layers
-    
+
     context.scene.objects.active = active_old
 
 
@@ -1501,20 +1501,20 @@ def calculate_volume(context, obj):
     bpy.ops.object.select_all(action='DESELECT')
     context.scene.objects.active = obj
     context.scene.objects.active.select = True
-    
+
     bpy.ops.object.duplicate()
     obj_duplicate = context.scene.objects.active
     context.scene.objects.active.select = True
     objects_to_be_deleted.append(obj_duplicate)
-    
+
     apply_modifiers(context, obj_duplicate)
-    
+
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.normals_make_consistent(inside=False) 
+    bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.mesh.quads_convert_to_tris(quad_method='FIXED', ngon_method='CLIP')
     bpy.ops.object.mode_set(mode='OBJECT')
-    
+
     mesh = obj.data
     print("Polygons: ", mesh.polygons) # since 2.62
     #print("Tesselated faces:", obj.data.tessfaces) # often out of sync
@@ -1528,7 +1528,7 @@ def calculate_volume(context, obj):
         da = a[0] * (c[1] - b[1])
         db = b[0] * (a[1] - c[1])
         dc = c[0] * (b[1] - a[1])
-        
+
         dV = (a[2] + b[2] + c[2]) / 3.0 * .5 * abs(da + db + dc)
         sign = 0
         if f.normal[2] < 0:
@@ -1537,21 +1537,25 @@ def calculate_volume(context, obj):
             sign = 1
         #print("sign: ", sign, " dV: ", dV, " f.normal: ", f.normal)
         volume += sign * dV
-        
+
     print("*done* Volume: ", volume)
-    
+
     delete_objects(context, objects_to_be_deleted)
-    
+
     context.scene.objects.active = active_old
     return abs(volume)
 
 
 def delete_objects(context, objects_to_be_deleted, exceptions=[]):
+    # Store context:
+    selected_objects = context.selected_objects.copy()
+    active_object = context.scene.objects.active
+
     # Ensure nothing is selected:
     if (len(context.selected_objects) > 0):
         deselect_all(context)
-        
-    # Select all objects that still have to be deleted (all but the joined ones):    
+
+    # Select all objects that have to be deleted.
     objects_to_be_deleted_length = len(objects_to_be_deleted)
     if (objects_to_be_deleted_length > 0):
         for objects_to_be_deleted_index in range(0, objects_to_be_deleted_length):
@@ -1562,7 +1566,14 @@ def delete_objects(context, objects_to_be_deleted, exceptions=[]):
             print(context.selected_objects, '\r\nactive_object: ', context.active_object)
             print('deleting ...')
         bpy.ops.object.delete()
-    
+
+    # Restore context:
+    for o in selected_objects:
+        # Has o not been deleted?
+        if o:
+            o.select = True
+    if active_object:
+        context.scene.objects.active = active_object
 
 
 def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, objects_to_be_deleted, is_already_duplicate=False, recursion_depth=0):
@@ -1570,14 +1581,14 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     if (recursion_depth > context.scene.after_how_many_create_bom_entry_recursions_to_abort):
         print(str(recursion_depth) + ' Reached recursion depth limit: ', context.scene.after_how_many_create_bom_entry_recursions_to_abort, ' current recursion depth: ', recursion_depth)
         return {'FINISHED'}
-    
+
     # Ensure nothing is selected:
     deselect_all(context)
-    
+
     #undo_count = undo_count + 1
     o.select = True
     #undo_count = undo_count + 1
-    
+
     #BELOW THIS LINE NOTHING HAS TO BE UNDONE! AS THIS DUPLICATED OBJECT
     #(GROUP INSTANCE) WILL SIMPLY BE DELETED AFTERWARDS.
     if (not is_already_duplicate): #<-- it may be duplicated, but make_real seems to duplicate linked!
@@ -1585,22 +1596,22 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
             print('Object to be resolved not yet is duplicate, but duplicate() operator failed')
         else:
             bpy.ops.object.make_single_user(type='SELECTED_OBJECTS', object=True, obdata=True)
-    
+
     if (len(context.selected_objects) > 1):
         print('Only one object (the group instance or one of the objects within its group) should have been selected.\r\nSelection: ', context.selected_objects, '. Thus dimension will only reflect those of the dupli group objects of the first selected group instance object.')
     elif (len(context.selected_objects) < 1):
         print('Warning: It was no object selected but exactly one object should have been selected.\r\nSelection: ', context.selected_objects, '.')
     context.scene.objects.active = context.selected_objects[0]
-    
+
     # The new (copy) group instance hopefully is the active object now:
     if (not context.scene.objects.active):
         print('Warning: No active object after duplicating object: ', o)
     else:
         if debug:
             print('active object after duplication of group instance: ', context.active_object, ' or :', context.scene.objects.active)
-            
+
     o_duplicate = context.scene.objects.active
-   
+
     # If the objects are duplicated, then they still are in the same groups as the original object. This means the dupli_group suddenly has more members, which leads to endless recursion. Thus remove the duplicates from all groups:
     #if debug:
     #    print('Removing selected objects from all groups. ', context.selected_objects)
@@ -1608,7 +1619,7 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     #    for d_group in selected_duplicate.users_group:
     #        bpy.ops.group.objects_remove(group=d_group)
     bpy.ops.group.objects_remove_all()
-    
+
     # As this is a duplicate, it needs to be removed later on:
     # Required because of joining only allows mesh or curve only - no mix!
     if (context.scene.objects.active.type == 'MESH'):
@@ -1617,12 +1628,12 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
     else:
         objects_to_be_deleted.append(o_duplicate) # It's safer here as joining into an active object keeps up the active object of course. Thus the object should be deleted but it is not as it has been marked for join. Thus better not even mark for deletion.
 
-    # Further decomposition possible? 
+    # Further decomposition possible?
     if (not (o_duplicate.dupli_group is None)):
         # Store a reference because it's not certain that an operator not changes the active object.
         group_instance_object = o_duplicate
         if debug:
-            print('Making real ... active: ', context.scene.objects.active) 
+            print('Making real ... active: ', context.scene.objects.active)
         #the active object (group instance) should be the only selected one:
         group_instance_object.dupli_type = 'GROUP' # Turned the function into an operator, then a bug appeared: the dupli_type was cleared, somehow set to None.
         bpy.ops.object.duplicates_make_real(use_base_parent=True)#false because we don't set up
@@ -1630,17 +1641,17 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
                 #The dupli group attached to this object
                 #is copied here as real value object copies (not references). Though as it's apparently linked,
                 #making single user is required:
-        print('Making single user ... selected objects: ', context.selected_objects)   
+        print('Making single user ... selected objects: ', context.selected_objects)
         bpy.ops.object.make_single_user(type='SELECTED_OBJECTS', object=True, obdata=True)
         #Note:
         # The real objects (including the group instance's empty!) that now reside where the group instance was before
         # should already be selected after duplicates_make_real. (Note while make_real resolves to the very bottom,
         # this (our) algorithm also works if this feature should change in the future as it's a recursive approach.)
-        if (len(context.selected_objects) < 1): 
+        if (len(context.selected_objects) < 1):
             print('Attention: No selection after duplicates_make_real operator! active object: ', context.scene.objects.active)
-        
+
         bpy.ops.group.objects_remove_all() # optional (because make_real removes the objects from all groups already)
-            
+
         #group_objects = context.scene.objects.active.dupli_group.objects#.children
         group_objects = context.selected_objects
         #selected_objects_count = 0
@@ -1656,11 +1667,11 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
                 continue
             resolve_all_joinable_objects_recursively(context, group_object, objects_to_be_joined, objects_to_be_deleted, is_already_duplicate=True, recursion_depth=(recursion_depth + 1))
             #++selected_objects_count
-        
+
     return {'FINISHED'}
 
 
- 
+
 
 #
 # White space for filling up to a certain length.
@@ -1686,12 +1697,12 @@ def processEntry(entry, column_separator=""):
     material = entry_parts[1]
     dimensions = entry_parts[2]
     is_optional = entry_parts[3]
-    
+
     whitespace_count = object_longest_label_len - len(label)
     material_whitespace_count = material_longest_label_len - len(material)
     if debug:
         print('object whitespace count: ', whitespace_count, '\t material whitespace count: ', material_whitespace_count)
-    
+
     pre = ''
     post = ''
     if (is_optional):
@@ -1699,7 +1710,7 @@ def processEntry(entry, column_separator=""):
         post = APPEND_IF_OPTIONAL
     entryProcessed = '\t' + pre + label + getWhiteSpace(whitespace_count) + '\t' + column_separator + material + getWhiteSpace(material_whitespace_count) + '\t' + column_separator + dimensions + post;
     #entryProcessed_len = len(entryProcessed)
-    
+
     return entryProcessed
 
 
@@ -1712,7 +1723,7 @@ APPEND_IF_OPTIONAL = ')'
 def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_map, assembly_bom_entry_count_map, filelink=None):#<-- argument is a dictionary (key value pairs)!
     if debug:
         print('Writing bill of materials to file ...')
-        
+
     if (filelink is None):
         filelink = build_filelink(context)
     if debug:
@@ -1720,22 +1731,22 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
         print('Highest entry count string char count: ', entry_count_highest_digit_count)
         print('Highest object label char count: ', object_longest_label_len)
         print('Highest material char count: ', material_longest_label_len)
-        
+
     #write to file
     result = False
     with open(filelink, 'w') as f:#for closing filestream automatically
         #f.read()
         #f.readhline()
-        
+
         # HTML / Markdown additions:
         table_begin = ""
-        
+
         header_begin = ""
         header_row_begin = ""
         header_column_separator = ""
         header_row_end = ""
         header_end = ""
-        
+
         body_begin = ""
         row_begin = ""
         column_separator = ""
@@ -1743,18 +1754,18 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
         row_end = ""
         row_empty = ""
         body_end = ""
-        
+
         table_end = ""
         if (context.scene.selection2bom_in_include_blueprints):
             # Add html markup per entry: <tr><td></td></tr> or <td colspan="3"></td> if blueprint/image row.
             table_begin = "<table>"
-        
+
             header_begin = "<thead>"
             header_row_begin = "<tr><th>"
             header_column_separator = "</th><th>"
             header_row_end = "</th></tr>"
             header_end = "</thead>"
-        
+
             body_begin = "<tbody>"
             row_begin = "<tr><td>"
             column_separator = "</td><td>"
@@ -1762,9 +1773,9 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
             row_end = "</td></tr>"
             row_empty = '<tr><td colspan="4"></td></tr>'
             body_end = "</tbody>"
-        
+
             table_end = "</table>"
-        
+
         bom = table_begin
         bom += header_begin
         bom += header_row_begin + getWhiteSpace(entry_count_highest_digit_count) + '#  \t' + header_column_separator + 'Label' + getWhiteSpace(object_longest_label_len - 5) + '\t' + header_column_separator + 'Material ' + getWhiteSpace(material_longest_label_len - 8) + '\t' + header_column_separator + 'Dimensions' + header_row_end
@@ -1773,11 +1784,11 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
             bom = bom + getWhiteSpace(entry_count_highest_digit_count) + '-  \t-----' + getWhiteSpace(object_longest_label_len - 5) + '\t---------' + getWhiteSpace(material_longest_label_len - 8) + '\t----------'
         bom = bom + '\r\n'
         bom += header_end
-        
+
         bom += body_begin
         bom += row_empty
         # Total part (counts):
-        for entry, entry_count in bom_entry_count_map.items(): 
+        for entry, entry_count in bom_entry_count_map.items():
             pre = ''
             if (entry.split('___')[3] != ''):
                 pre = PREPEND_IF_OPTIONAL
@@ -1785,7 +1796,7 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
             whitespace_count = entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) - digit_count
             bom = bom + '\r\n' + row_begin + pre + getWhiteSpace(whitespace_count) + str(entry_count) + 'x ' + column_separator + processEntry(entry, column_separator)
             bom += row_end
-            
+
             # Include extra information line?
             if context.scene.selection2bom_in_include_info_line:
                 if entry in bom_entry_info_map:
@@ -1795,38 +1806,38 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
                 else:
                     if debug:
                         print('No information for entry: ', entry)
-                    
+
             # Include blueprints (1 per variant)?
             if (context.scene.selection2bom_in_include_blueprints):
                 if entry in bom_entry_variant_map:
                     for variant_volume, variant_count in bom_entry_variant_map[entry].items():
                         blueprint_filelink = build_blueprint_filelink(filelink, entry, variant_volume)
-                        blueprint = '<img src="'+ blueprint_filelink +'" title="Volume: ' + str(variant_volume) + '" alt="blueprint"/>' 
+                        blueprint = '<img src="'+ blueprint_filelink +'" title="Volume: ' + str(variant_volume) + '" alt="blueprint"/>'
                         head = '\r\n' + row_begin + getWhiteSpace(entry_count_highest_digit_count - len(str(variant_count)) + len(PREPEND_IF_OPTIONAL)) + str(variant_count) + 'x \t' + column_separator_colspan_remainder + blueprint #+ variant_volume
                         #body = '\r\n' + getWhiteSpace(entry_count_highest_digit_count + len(PREPEND_IF_OPTIONAL) + len('x ')) + '\t' + blueprint
                         bom = bom + head + row_end
                 else:
                     if debug:
                         print('No variants for entry: ', entry)
-                
-                
+
+
             bom = bom + '\r\n' + row_empty # <- Some space for clearly structuring by which entries belong together.
         #bom = bom + '\r\n'
         bom += body_end
-        
+
         bom += body_begin
         # Assemblies (including count):
         if (context.scene.selection2bom_in_mode == '2'):
             bom = bom + '\r\n\r\n\r\n======= ASSEMBLIES: ======'
-            for assembly, entry_count_map in assembly_bom_entry_count_map.items(): 
+            for assembly, entry_count_map in assembly_bom_entry_count_map.items():
                 # Skip atomar assemblies (as they are listed in the global list and not to be decomposed):
                 if (not (assembly in assembly_count_map)):
                     if (not (assembly in bom_entry_count_map)):
                         print('Assembly neither found in assembly count map nor in global bom entry count map.')
                     if debug:
                         print('Skipping atomar assembly: ', assembly)
-                    continue 
-                # it's a decomposable assembly, i.e. a non-empty and non-atomar one:   
+                    continue
+                # it's a decomposable assembly, i.e. a non-empty and non-atomar one:
                 bom = bom + '\r\n--------------'
                 pre = ''
                 if (assembly.split('___')[3] != ''):
@@ -1838,10 +1849,10 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
                 bom += row_end
 
                 bom = bom + '\r\n-------'
-                for entry, entry_count in entry_count_map.items(): 
+                for entry, entry_count in entry_count_map.items():
                     pre = ''
                     if (entry.split('___')[3] != ''):
-                        pre = PREPEND_IF_OPTIONAL 
+                        pre = PREPEND_IF_OPTIONAL
                     count_string = str(int(round(entry_count/assembly_count, 0)))# + '(' + str(entry_count) + ')')
                     print(count_string, " = entry_count: ", entry_count, " / assembly_count: ", assembly_count)
                     digit_count = len(count_string + pre)
@@ -1849,19 +1860,19 @@ def write2file(context, bom_entry_count_map, bom_entry_info_map, assembly_count_
                     bom = bom + '\r\n' + row_begin + pre + getWhiteSpace(whitespace_count) + count_string + 'x ' + column_separator + processEntry(entry, column_separator)
                     bom += row_end
                     #bom = bom '\r\n'
-                    
+
                 bom = bom + '\r\n' + row_begin + '--------------\r\n\r\n' + column_separator_colspan_remainder + '' + row_end
-                  
+
         bom += body_end
-            
-            
+
+
         result = f.write(bom)
         if (result):
             print('Bill of materials created: ', filelink)
         else :
             print('Bill of materials: creation failed! ', filelink)
     return result
-        
+
 
 
 def build_blueprint_filelink(filelink, entry, variant_volume):
@@ -1870,24 +1881,24 @@ def build_blueprint_filelink(filelink, entry, variant_volume):
     if filelink_relative_to_blend.startswith('/'):
         filelink_relative_to_blend = '.' + filelink_relative_to_blend#.replace('^/', '')
     print(filelink_relative_to_blend)
-    
+
     # TODO This filelink might be too long for most filesystems.
     blueprint_filelink = filelink_relative_to_blend + '__entry_' + entry.replace(' ', '_').replace('[', '').replace(']', '') + '__volume_' + str(variant_volume) + '__blueprint.jpg'
 
     return blueprint_filelink
-    
+
 
 
 # This bom entry is appended to a file.
 def append_bom_entry_to_file(context, bom_entry):
   return append_to_file(context, '\r\n' + str(bom_entry_count_map[bom_entry]) + 'x ' + bom_entry)
-  
-  
+
+
 def append_to_file(context, content):
-    
+
     if debug:
         print('Target filelink: ', filelink)
-        
+
     #append to file
     with open(filelink, 'a') as f:#for closing filestream automatically
         #f.read()
@@ -1895,7 +1906,7 @@ def append_to_file(context, content):
         if (f.write(content)):
             print('Appended to file: ', filelink, ' \t Content: ',  content)
             return True
-        
+
         #f.tell()
         #f.seek(byte) #e.g. 0123 -> 4th byte is 3
         #http://docs.python.org/3/tutorial/inputoutput.html
@@ -1927,7 +1938,7 @@ def build_filelink(context, prepend=''):
     fileending = '.txt'
     if context.scene.selection2bom_in_include_blueprints and hasattr(context.scene, "blueprint_settings"):
         fileending = '.md' # Markdown format for showing images directly on the git mirror, e.g. Github. Though html also works because the syntax is html.
-        
+
     #objectname = getBaseName(context.selected_objects[0].name)
     objectname = None
     if context.active_object:
@@ -1936,14 +1947,14 @@ def build_filelink(context, prepend=''):
         objectname = context.scene.name
     if (not objectname or objectname is None):
         objectname = 'neither_active_object_nor_scene_name'
-    
+
     filename = filename + objectname
     filelink = root + '/' + filename + fileending
-    
+
     # Don't overwrite existing files because for several subsequent selections made,
     # individual (and persisting) files could be desired.
     number = 0
-    while (os.path.isfile(filelink)):#alternatively: try: with (open(filelink)): ... except IOError: print('file not found') 
+    while (os.path.isfile(filelink)):#alternatively: try: with (open(filelink)): ... except IOError: print('file not found')
         number = number + 1              #http://stackoverflow.com/questions/82831/how-do-i-check-if-a-file-exists-using-python
         filename_ = filename + str(number)
         filelink = root + '/' + filename_ + fileending
@@ -2056,9 +2067,9 @@ def getBaseName(s):
         #if debug:
         #    print('getBaseName: already tidied up *done*, basename: ', s)
         return s
-    
 
-    
+
+
 
 
 
@@ -2088,7 +2099,7 @@ class OBJECT_OT_Selection2BOM(bpy.types.Operator):
     bl_register = True
     bl_undo = True
     #bl_options = {'REGISTER', 'UNDO'}
-    
+
     #=======CONSTRUCTION=======================================================#
     #def __init__(self):
     #=======METHODS============================================================#
@@ -2143,20 +2154,20 @@ class VIEW3D_PT_tools_selection2bom(bpy.types.Panel):
         col = layout.column(align = True)
         col.row().prop(s, 'selection2bom_in_mode', expand = True)
         #splitbutton for enums (radio buttons) ...
-        
+
         row = layout.row(align=True)
         row.prop(s, 'selection2bom_in_precision')
 
         row = layout.row(align=True)
         row.prop(s, 'selection2bom_in_include_info_line')
-        
+
         row = layout.row(align=True)
         row.prop(s, 'selection2bom_in_include_blueprints')
-        
+
         #col = layout.column(align=True)
         #col.row().prop(s, 'selection2bom_in_scale_factor')#better use the unit settings in scene tab
-                
-        
+
+
         #textfield
         #layout.prop(s, 'joinorgroupbypattern_in_pattern', text = 'Pattern')
         #splitbutton for enums (radio buttons) ...
@@ -2164,7 +2175,7 @@ class VIEW3D_PT_tools_selection2bom(bpy.types.Panel):
         #only relevant if mode set to join => active (additional option)
         #row.active = (in_mode_str == 'Join')
         #row.prop(s, 'joinorgroupbypattern_in_tidyupnames')
-        
+
         #if (len(s.selected_objects) == 0):
             #col = layout.column(align = True)
             #col.label(text = 'Include hidden objects:')
@@ -2173,8 +2184,8 @@ class VIEW3D_PT_tools_selection2bom(bpy.types.Panel):
             #col.row().prop(s, 'joinorgroupbypattern_in_a_e_digits_total_max')
             #row = layout.row(align = True)
             #row.prop(s, 'selection2bom_in_include_hidden')
-            
-        
+
+
         row = layout.row(align = True)
         label = in_mode_str + " 2 BOM!"
         if (s.selection2bom_in_mode == '0'):
@@ -2183,7 +2194,7 @@ class VIEW3D_PT_tools_selection2bom(bpy.types.Panel):
             label = '(Resolve group instances)' + label
         else:#if (s.selection2bom_in_mode == '2'):
             label = '(Both/Hybrid)' + label
-            
+
         row.operator('object.selection2bom', icon='FILE_TICK', text = label)
 
 
@@ -2201,17 +2212,17 @@ def register():
     bpy.utils.register_module(__name__)
     #bpy.utils.register_class(OBJECT_OT_Selection2BOM)
     #bpy.utils.register_class(VIEW3D_PT_tools_selection2bom)
-    
+
     ## Both independent, for the input-globals see register()!
     #bpy.types.Scene.case_sensitive = True
 
     ## Difficult to guess unless animation or rendering-related:
     #bpy.types.Scene.skip_non_mechanical_objects = True
-    
+
     # Whether to resolve groups and create BoM entries for contained objects
     # is set in context view 3d panel.
     bpy.types.Scene.after_how_many_create_bom_entry_recursions_to_abort = 100#kind a century :)
-    
+
     #mode
     bpy.types.Scene.selection2bom_in_mode = EnumProperty(
         name = "Mode",
@@ -2247,7 +2258,7 @@ def register():
         #,options = {'HIDDEN'}
         ,min = 0
         ,max = 1000000
-        ,default = 1#keep scale 
+        ,default = 1#keep scale
     )
     # Shall include extra information (description, URI, ..) line:
     bpy.types.Scene.selection2bom_in_include_info_line = BoolProperty(
@@ -2298,7 +2309,7 @@ def addDistance(distance, length, unit):
     return str(int(length))+unit
 
 
-	
+
 # FUNCTION FOR MAKING A NEAT METRIC SYSTEM MEASUREMENT STRING
 def getMeasureString(distance, unit_settings, precision):
 
@@ -2309,27 +2320,27 @@ def getMeasureString(distance, unit_settings, precision):
     m = distance * unit_settings.scale_length
     fM = 0
     distance = False
-    
+
     # From chosen to standard international (SI) conversion factors:
     if system == 'METRIC':
         table = [['km', 0.001], ['m', 1000], ['cm', 100], ['mm', 10]]
     elif system == 'IMPERIAL':
         table = [['mi', 0.000621371], ['ft', 5280], ['in', 12], ['thou', 1000]]
-    
+
     # Figure out where to end measuring
     last = len(table)
     if precision < last:
         last = precision
-    
+
     for i, t in enumerate(table):
         step = i
         unit = t[0]
         factor = t[1]
         m = (m - fM) * factor
         fM = math.floor(m)
-        
+
         if fM and not separate:
-            rounded = round(m, precision) 
+            rounded = round(m, precision)
             if precision < 1:
                 rounded = int(rounded)
             return str(rounded) + unit
@@ -2338,11 +2349,11 @@ def getMeasureString(distance, unit_settings, precision):
             if step > last - 1:
                 return addDistance(distance, round(m), unit)
             distance = addDistance(distance, fM, unit)
-    
+
     if not distance:
         return '-' + unit
-    
+
     return distance
-	
-	
-	
+
+
+
