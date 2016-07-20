@@ -21,7 +21,7 @@
 
 bl_info = {
     "name":         "Selection 2 Bill of Materials",
-    "author":       "macouno, Yorik van Havre, Jan R.I.B.-Wein",
+    "author":       "macouno, Yorik van Havre, Jan R.I.B.-Wein, worlddevelopment",
     "version":      (2, 0),
     "blender":      (2, 7, 3),
     "location":     "View3D > Tool Shelf > Misc > Selection to Bill of Materials",
@@ -584,7 +584,7 @@ def create_bom_entry_recursively(context, o_bjects, owning_group_instance_object
 
 
 #
-# If a object type is considered or rather if an object type is ignored, i.e. filtered out.
+# If an object type is considered or rather if an object type is ignored, i.e. filtered out.
 # This is useful for skipping animation related objects which shall e.g. not occur in a BOM.
 #
 def is_object_type_considered(object_type):
@@ -1636,11 +1636,15 @@ def resolve_all_joinable_objects_recursively(context, o, objects_to_be_joined, o
             print('Making real ... active: ', context.scene.objects.active)
         #the active object (group instance) should be the only selected one:
         group_instance_object.dupli_type = 'GROUP' # Turned the function into an operator, then a bug appeared: the dupli_type was cleared, somehow set to None.
+        # The dupli group attached to this object
+        # is copied here as real value object copies (not references).
         bpy.ops.object.duplicates_make_real(use_base_parent=True)#false because we don't set up
-                #the empty group instance as parent of the now copied and no longer referenced group objects!
-                #The dupli group attached to this object
-                #is copied here as real value object copies (not references). Though as it's apparently linked,
-                #making single user is required:
+                # the empty group instance as parent of the now copied and no longer referenced group objects!
+        # Yet the object data may be linked from a library:
+        print('Making library objects local ...')
+        bpy.ops.object.make_local(type='SELECT_OBDATA')
+        # Also the objects are apparently linked,
+        # making single user is thus required:
         print('Making single user ... selected objects: ', context.selected_objects)
         bpy.ops.object.make_single_user(type='SELECTED_OBJECTS', object=True, obdata=True)
         #Note:
